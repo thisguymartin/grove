@@ -21,6 +21,15 @@
 #           ├── feature-auth/ <- wtab feature-auth
 #           └── fix-login/    <- wtab fix-login
 
+# Identify the installation directory of Grove
+if [[ -n "${BASH_SOURCE[0]:-}" ]]; then
+    GROVE_INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+elif [[ -n "${ZSH_VERSION:-}" ]]; then
+    GROVE_INSTALL_DIR="$(cd "$(dirname "${(%):-%x}")" && pwd)"
+else
+    GROVE_INSTALL_DIR="$(cd "$(dirname "$0")" && pwd)"
+fi
+
 # ---------------------------------------------------------------------------
 # wta — add worktree for an EXISTING upstream branch
 # Usage: wta <existing-branch>
@@ -186,15 +195,7 @@ alias wtrm='git worktree remove --force'
 # Usage: wtstatus [repo-path]
 # ---------------------------------------------------------------------------
 wtstatus() {
-    local script_dir
-    if [[ -n "${BASH_SOURCE[0]:-}" ]]; then
-        script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    else
-        # zsh
-        script_dir="$(cd "$(dirname "$0")" && pwd)"
-    fi
-
-    local status_script="$script_dir/worktree-status.sh"
+    local status_script="$GROVE_INSTALL_DIR/worktree-status.sh"
     if [[ ! -f "$status_script" ]]; then
         echo "Error: worktree-status.sh not found at $status_script"
         return 1
@@ -208,16 +209,7 @@ wtstatus() {
 # Usage: wtui [repo-path]
 # ---------------------------------------------------------------------------
 wtui() {
-    local script_dir
-    # Resolve the location of this script to find launch-worktrees.sh
-    if [[ -n "${BASH_SOURCE[0]:-}" ]]; then
-        script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    else
-        # zsh
-        script_dir="$(cd "$(dirname "$0")" && pwd)"
-    fi
-
-    local launcher="$script_dir/launch-worktrees.sh"
+    local launcher="$GROVE_INSTALL_DIR/launch-worktrees.sh"
     if [[ ! -f "$launcher" ]]; then
         echo "Error: launch-worktrees.sh not found at $launcher"
         return 1
@@ -235,14 +227,7 @@ wtui() {
 # Auto-kills any existing session with the same name before launching.
 # ---------------------------------------------------------------------------
 grove() {
-    local script_dir
-    if [[ -n "${BASH_SOURCE[0]:-}" ]]; then
-        script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    else
-        script_dir="$(cd "$(dirname "$0")" && pwd)"
-    fi
-
-    local launcher="$script_dir/launch-grove.sh"
+    local launcher="$GROVE_INSTALL_DIR/launch-grove.sh"
     if [[ ! -f "$launcher" ]]; then
         echo "Error: launch-grove.sh not found at $launcher"
         return 1
