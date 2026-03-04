@@ -35,13 +35,13 @@ GROVE_DIR=~/my/path bash <(curl -s https://raw.githubusercontent.com/thisguymart
 
 ```bash
 # 1. Clone
-git clone https://github.com/thisguymartin/grove.git ~/workspace/grove
+git clone https://github.com/thisguymartin/grove.git ~/.local/share/grove
 
 # 2. Install dependencies
-brew bundle --file=~/workspace/grove/brewfile
+brew bundle --file=~/.local/share/grove/brewfile
 
 # 3. Add to ~/.zshrc (or ~/.bashrc)
-echo 'source ~/workspace/grove/git-worktree-aliases.sh' >> ~/.zshrc
+echo 'source ~/.local/share/grove/git-worktree-aliases.sh' >> ~/.zshrc
 
 # 4. Reload
 source ~/.zshrc
@@ -85,7 +85,7 @@ Sessions auto-quit when you close the terminal — no stale sessions.
 A standalone script for worktree lifecycle management:
 
 ```bash
-alias gwt='~/workspace/grove/git-worktree.sh'
+alias gwt='~/.local/share/grove/git-worktree.sh'
 ```
 
 | Command | Description |
