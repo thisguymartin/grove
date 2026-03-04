@@ -2,10 +2,10 @@
 # Git Worktree Shell Aliases & Functions
 #
 # Source this file in your ~/.zshrc or ~/.bashrc:
-#   source ~/workspace/grove/git-worktree-aliases.sh
+#   source ~/.local/share/grove/git-worktree-aliases.sh
 #
 # Or add to your shell config with a one-liner:
-#   echo 'source ~/workspace/grove/git-worktree-aliases.sh' >> ~/.zshrc
+#   echo 'source ~/.local/share/grove/git-worktree-aliases.sh' >> ~/.zshrc
 #
 # Git config aliases (wta, wtab, wtp) are shell functions here for broader
 # compatibility and richer output. wtls/wtrm are thin wrappers around git builtins.
