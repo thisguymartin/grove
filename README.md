@@ -1,0 +1,184 @@
+# Grove
+
+AI-native terminal workspace. One command to launch **colored Zellij tabs per git worktree**, each with LazyGit + AI Agent + Workbench.
+
+```
++--------------------------------------------------+
+| [tab-bar]  main | feature/auth | fix-login | Ovr |
+|           green     blue         yellow     cyan  |
++--------------------------------------------------+
+|                  |                                |
+|   LazyGit        |   AI Agent (Claude/Gemini/OpenCode) |  70%
+|                  |                                |
++--------------------------------------------------+
+|   Workbench (shell)                              |  30%
++--------------------------------------------------+
+```
+
+## Install
+
+### Recommended: One-liner
+
+```bash
+bash <(curl -s https://raw.githubusercontent.com/thisguymartin/grove/main/install/install.sh)
+```
+
+This will clone the repo, install brew dependencies, and wire up your shell aliases automatically. It detects your shell (zsh/bash) and is idempotent — safe to run multiple times.
+
+To install to a custom directory:
+
+```bash
+GROVE_DIR=~/my/path bash <(curl -s https://raw.githubusercontent.com/thisguymartin/grove/main/install/install.sh)
+```
+
+### Manual
+
+```bash
+# 1. Clone
+git clone https://github.com/thisguymartin/grove.git ~/workspace/grove
+
+# 2. Install dependencies
+brew bundle --file=~/workspace/grove/brewfile
+
+# 3. Add to ~/.zshrc (or ~/.bashrc)
+echo 'source ~/workspace/grove/git-worktree-aliases.sh' >> ~/.zshrc
+
+# 4. Reload
+source ~/.zshrc
+```
+
+## Usage
+
+`cd` into any git repo and run:
+
+```bash
+grove                # Launch workspace (default: claude)
+grove gemini         # Use Gemini CLI instead
+grove opencode       # Use OpenCode instead
+```
+
+This will:
+1. Discover all git worktrees in your current repo
+2. Auto-kill any previous session with the same name
+3. Launch Zellij with **one color-coded tab per worktree** + an Overview tab
+
+Sessions auto-quit when you close the terminal — no stale sessions.
+
+## Commands
+
+| Command | Description |
+| :--- | :--- |
+| **`grove`** | Launch workspace — colored tabs per worktree (default: claude) |
+| `grove opencode` | Launch with OpenCode instead of Claude |
+| `grove gemini` | Launch with Gemini CLI instead of Claude |
+| **`wtab <branch>`** | Create a new branch + worktree |
+| **`wta <branch>`** | Add worktree for an existing remote branch |
+| **`wtls`** | List all worktrees |
+| **`wtrm <path>`** | Remove a worktree (force) |
+| **`wtp [base]`** | Prune worktrees merged/squash-merged/rebased into base branch |
+| `wtui [path]` | Launch Zellij per-worktree tabs (without AI editor arg) |
+| `wtstatus [path]` | Live worktree status dashboard (standalone) |
+| **`zj-kill`** | Kill all Zellij sessions (clean slate) |
+
+### Git Worktree Toolkit (`gwt`)
+
+A standalone script for worktree lifecycle management:
+
+```bash
+alias gwt='~/workspace/grove/git-worktree.sh'
+```
+
+| Command | Description |
+| :--- | :--- |
+| `gwt new <branch>` | Create a new branch and worktree |
+| `gwt add <branch>` | Add a worktree for an existing branch |
+| `gwt rm <branch>` | Remove a worktree (prompts to delete branch) |
+| `gwt ls` | List all worktrees |
+| `gwt prune` | Remove worktrees for merged/stale branches |
+| `gwt tab` | Launch Zellij with one tab per worktree |
+
+### Git Config Aliases (optional)
+
+Add to your `~/.gitconfig` `[alias]` section:
+
+```gitconfig
+[alias]
+    wta  = "!f() { branch=$1; cur_git_dir=$(git rev-parse --show-toplevel); proj_dir=$(dirname \"$cur_git_dir\"); repo_name=$(basename \"$cur_git_dir\"); target=\"$proj_dir\"/worktrees/\"$repo_name\"/\"$branch\"; if [ ! -d $target ]; then git worktree add \"$target\"; fi; exit 0; }; f"
+    wtab = "!f() { branch=$1; cur_git_dir=$(git rev-parse --show-toplevel); proj_dir=$(dirname \"$cur_git_dir\"); repo_name=$(basename \"$cur_git_dir\"); target=\"$proj_dir\"/worktrees/\"$repo_name\"/\"$branch\"; if [ ! -d $target ]; then git worktree add \"$target\" -b \"$branch\"; fi; exit 0; }; f"
+    wtp  = "!f(){ set -eu; default_branch=$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null | sed 's@^origin/@@' || true); main_branch=${1:-${default_branch:-main}}; git fetch -p origin >/dev/null 2>&1 || true; git worktree prune; }; f"
+    wtls = worktree list
+    wtrm = worktree remove --force
+```
+
+## Worktree Lifecycle
+
+```bash
+# Create worktrees
+wtab feature/auth          # new branch + worktree
+wta existing-branch        # worktree for existing remote branch
+
+# List what you have
+wtls
+
+# Launch workspace with all worktrees as tabs
+grove
+
+# Navigate tabs
+# Alt+Left/Right to switch between worktree tabs
+# Alt+Arrow Keys to move between panes
+
+# Clean up when done
+wtrm /path/to/worktree    # remove a specific worktree
+wtp                        # auto-prune merged worktrees
+
+# Or via gwt (prompts to delete branch too)
+gwt rm feature/auth
+```
+
+## Session Management
+
+`grove` auto-kills its previous session before re-launching. Sessions also auto-quit when the terminal closes (`on_force_close "quit"`).
+
+```bash
+zj-kill                    # Kill ALL Zellij sessions (nuclear option)
+zellij kill-session <name> # Kill a specific session
+```
+
+## Tab Colors
+
+Each worktree tab cycles through: **green, blue, yellow, magenta, cyan, orange, red**. The Overview tab is always **cyan**. Colors repeat if you have more than 7 worktrees.
+
+## Worktree Directory Structure
+
+Worktrees are created under a sibling `worktrees/` directory:
+
+```
+~/projects/
+  my-repo/              <- your main clone
+  worktrees/
+    my-repo/
+      feature/login/    <- worktree for feature/login branch
+      bugfix/header/    <- worktree for bugfix/header branch
+```
+
+## Environment Variables
+
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `GWT_BASE_BRANCH` | `main` | Base branch used by `prune` to detect merged branches |
+| `GWT_WORKTREE_DIR` | `../worktrees/<repo>` | Override the directory where worktrees are created |
+| `AI_EDITOR` | `claude` | AI editor launched in each worktree tab (`claude`, `gemini`, `opencode`) |
+
+## Requirements
+
+- [Zellij](https://zellij.dev) — terminal multiplexer
+- [LazyGit](https://github.com/jesseduffield/lazygit) — git TUI (optional, falls back to shell)
+- [Claude Code](https://claude.ai/claude-code), [Gemini CLI](https://github.com/google-gemini/gemini-cli), or [OpenCode](https://github.com/opencode-ai/opencode) — AI agent (optional)
+
+## Keybindings
+
+See [CHEATSHEET.md](CHEATSHEET.md) for the full keyboard reference.
+
+## License
+
+MIT

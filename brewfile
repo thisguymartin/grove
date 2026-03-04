@@ -1,0 +1,5 @@
+# Grove dependencies
+brew "zellij"       # Terminal multiplexer (required)
+brew "lazygit"      # Git TUI (optional, falls back to shell)
+brew "gemini-cli"   # Gemini CLI (optional, Google AI agent)
+brew "git"          # Git (you probably already have this)

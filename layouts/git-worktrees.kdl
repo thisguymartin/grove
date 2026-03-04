@@ -1,0 +1,83 @@
+// Git Worktrees Layout
+//
+// This is a STATIC fallback template used when you have a single worktree
+// or want a fixed starting point. For a DYNAMIC layout that automatically
+// creates one tab per worktree, use:
+//
+//   ./zellij/launch-worktrees.sh
+//
+// Tab structure (dynamic layout, N worktrees):
+//
+//   [ main ] [ feature-auth ] [ fix-login ] [ Overview ]
+//      |            |               |              |
+//   lazygit      lazygit         lazygit       live status
+//   + AI agent   + AI agent      + AI agent    dashboard
+//   + workbench  + workbench     + workbench
+//
+// Tab-bar at top for navigation, status-bar at bottom.
+//
+// Keyboard shortcuts for tabs (Zellij defaults):
+//   Alt + Left / Right  — cycle tabs
+//   Alt + t             — open new tab
+//   Ctrl + o, d         — detach session (keep running in background)
+
+layout {
+    // Tab bar at top, status bar at bottom
+    default_tab_template {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        children
+        pane size=1 borderless=true {
+            plugin location="zellij:status-bar"
+        }
+    }
+
+    // Tab: main worktree
+    // Replace cwd paths with your actual repo root
+    tab name="main" color="green" {
+        // TOP: LazyGit + AI Agent side by side
+        pane split_direction="vertical" size="70%" {
+            pane command="lazygit" name="LazyGit" {
+                // cwd "~/projects/my-repo"
+            }
+            pane command="claude" name="AI Agent" {
+                // cwd "~/projects/my-repo"
+                focus true
+            }
+        }
+        // BOTTOM: Workbench shell
+        pane name="Workbench" {
+            // cwd "~/projects/my-repo"
+        }
+    }
+
+    // Tab: example feature worktree
+    // Duplicate this block for each additional worktree
+    tab name="feature-branch" color="blue" {
+        pane split_direction="vertical" size="70%" {
+            pane command="lazygit" name="LazyGit" {
+                // cwd "~/projects/worktrees/my-repo/feature-branch"
+            }
+            pane command="claude" name="AI Agent" {
+                // cwd "~/projects/worktrees/my-repo/feature-branch"
+                focus true
+            }
+        }
+        pane name="Workbench" {
+            // cwd "~/projects/worktrees/my-repo/feature-branch"
+        }
+    }
+
+    // Tab: Overview — live status dashboard + worktree management shell
+    tab name="Overview" color="cyan" {
+        pane split_direction="vertical" {
+            pane command="watch" name="Worktree Status" size="60%" {
+                args "-n" "2" "-c" "./zellij/worktree-status.sh"
+            }
+            pane name="worktree-mgmt" size="40%" {
+                // Run wtls, wtrm, wta, wtab, wtp here
+            }
+        }
+    }
+}
