@@ -69,11 +69,20 @@ layout {
         }
     }
 
+    // Tab: AI — live AI session dashboard (token usage, active agents, recent sessions)
+    tab name="AI" color="magenta" {
+        pane split_direction="vertical" {
+            pane command="sh" name="AI Dashboard" size="100%" {
+                args "-c" "while true; do clear; ./ai-status.sh; sleep 10; done"
+            }
+        }
+    }
+
     // Tab: Overview — live status dashboard + worktree management shell
     tab name="Overview" color="cyan" {
         pane split_direction="vertical" {
-            pane command="watch" name="Worktree Status" size="60%" {
-                args "-n" "2" "-c" "./zellij/worktree-status.sh"
+            pane command="sh" name="Worktree Status" size="60%" {
+                args "-c" "while true; do clear; ./zellij/worktree-status.sh; sleep 2; done"
             }
             pane name="worktree-mgmt" size="40%" {
                 // Run wtls, wtrm, wta, wtab, wtp here
