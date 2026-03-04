@@ -82,7 +82,7 @@ do_install() {
     # 2. Install Dependencies
     if command -v brew &>/dev/null; then
         info "Installing dependencies via Homebrew..."
-        brew bundle --file="$GROVE_DIR/brewfile" --no-lock || warn "Brew bundle failed. You may need to install dependencies manually."
+        brew bundle --file="$GROVE_DIR/brewfile" || warn "Brew bundle failed. You may need to install dependencies manually."
     fi
 
     # 3. Wire up shell aliases
