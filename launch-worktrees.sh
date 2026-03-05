@@ -183,7 +183,11 @@ HEADER
         local color_index=$((i % ${#TAB_COLORS[@]}))
         local tab_color="${TAB_COLORS[$color_index]}"
 
-        echo "    tab name=\"$esc_name\" color=\"$tab_color\" {"
+        # Number each tab so they're distinguishable even when inactive
+        # (Zellij only tints the active tab with its color)
+        local tab_num=$((i + 1))
+
+        echo "    tab name=\"${tab_num}:${esc_name}\" color=\"$tab_color\" {"
 
         # TOP (70%): LazyGit + AI Agent side by side
         echo "        pane split_direction=\"vertical\" size=\"70%\" {"
