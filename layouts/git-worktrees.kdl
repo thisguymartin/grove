@@ -69,23 +69,14 @@ layout {
         }
     }
 
-    // Tab: AI — live AI session dashboard (token usage, active agents, recent sessions)
-    tab name="AI" color="magenta" {
-        pane split_direction="vertical" {
-            pane command="sh" name="AI Dashboard" size="100%" {
-                args "-c" "while true; do clear; ./ai-status.sh; sleep 10; done"
-            }
-        }
-    }
-
-    // Tab: Overview — live status dashboard + worktree management shell
+    // Tab: Overview — live project dashboards (worktree status + AI spend)
     tab name="Overview" color="cyan" {
         pane split_direction="vertical" {
             pane command="sh" name="Worktree Status" size="60%" {
-                args "-c" "while true; do clear; ./worktree-status.sh; sleep 2; done"
+                args "-c" "while true; do clear; ./worktree-status.sh; sleep 15; done"
             }
-            pane name="worktree-mgmt" size="40%" {
-                // Run wtls, wtrm, wta, wtab, wtp here
+            pane command="sh" name="AI Spend" size="40%" {
+                args "-c" "while true; do clear; ./ai-status.sh; sleep 30; done"
             }
         }
     }

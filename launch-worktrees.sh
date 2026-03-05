@@ -225,19 +225,18 @@ HEADER
     script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     local esc_status_script
     esc_status_script=$(kdl_escape "$script_dir/worktree-status.sh")
-    local esc_aliases_script
-    esc_aliases_script=$(kdl_escape "$script_dir/git-worktree-aliases.sh")
+    local esc_ai_status_script
+    esc_ai_status_script=$(kdl_escape "$script_dir/ai-status.sh")
 
     cat <<FOOTER
-    // Overview tab — live worktree status dashboard
+    // Overview tab — live project dashboards (worktree status + AI spend)
     tab name="Overview" color="cyan" {
         pane split_direction="vertical" {
             pane command="bash" name="Worktree Status" size="60%" {
                 args "-c" "while true; do _out=\$(\"$esc_status_script\" \"$esc_repo\" 2>/dev/null); clear; printf '%s' \"\$_out\"; sleep 15; done"
             }
-            pane command="bash" name="worktree-mgmt" size="40%" {
-                args "-c" "source \"$esc_aliases_script\"; exec \$SHELL"
-                cwd "$esc_repo"
+            pane command="bash" name="AI Spend" size="40%" {
+                args "-c" "while true; do _out=\$(\"$esc_ai_status_script\" 2>/dev/null); clear; printf '%s' \"\$_out\"; sleep 30; done"
             }
         }
     }
