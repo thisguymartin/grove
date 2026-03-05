@@ -186,6 +186,12 @@ Worktrees are created under a sibling `worktrees/` directory:
 - [LazyGit](https://github.com/jesseduffield/lazygit) — git TUI (optional, falls back to shell)
 - [Claude Code](https://claude.ai/claude-code), [Gemini CLI](https://github.com/google-gemini/gemini-cli), or [OpenCode](https://github.com/opencode-ai/opencode) — AI agent (optional)
 
+## Claude Code Integration
+
+Grove includes a built-in [Claude Code](https://claude.ai/code) slash command for guided setup. After cloning the repo, run `/setup` in any Claude Code session to get interactive help with installation, configuration, and troubleshooting.
+
+Project-level context is also provided via `CLAUDE.md` so Claude Code understands the architecture out of the box.
+
 ## Keybindings
 
 See [CHEATSHEET.md](CHEATSHEET.md) for the full keyboard reference.
