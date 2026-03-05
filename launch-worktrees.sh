@@ -124,6 +124,34 @@ parse_worktrees() {
 
 parse_worktrees
 
+# Ensure the main worktree (original clone) is always included
+main_found=false
+for p in "${WT_PATHS[@]}"; do
+    if [[ "$p" == "$REPO_PATH" ]]; then
+        main_found=true
+        break
+    fi
+done
+
+if ! $main_found; then
+    # Detect default branch name (main or master)
+    main_branch=$(git -C "$REPO_PATH" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||')
+    if [[ -z "$main_branch" ]]; then
+        # Fallback: check if main or master branch exists
+        if git -C "$REPO_PATH" show-ref --verify --quiet refs/heads/main 2>/dev/null; then
+            main_branch="main"
+        elif git -C "$REPO_PATH" show-ref --verify --quiet refs/heads/master 2>/dev/null; then
+            main_branch="master"
+        else
+            main_branch=$(git -C "$REPO_PATH" symbolic-ref HEAD 2>/dev/null | sed 's|refs/heads/||')
+        fi
+    fi
+    main_head=$(git -C "$REPO_PATH" rev-parse HEAD 2>/dev/null || echo "")
+    WT_PATHS=("$REPO_PATH" "${WT_PATHS[@]}")
+    WT_BRANCHES=("refs/heads/$main_branch" "${WT_BRANCHES[@]}")
+    WT_HEADS=("$main_head" "${WT_HEADS[@]}")
+fi
+
 if [[ ${#WT_PATHS[@]} -eq 0 ]]; then
     echo "Error: no worktrees found in $REPO_PATH"
     exit 1
