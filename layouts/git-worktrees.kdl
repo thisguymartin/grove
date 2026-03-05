@@ -82,7 +82,7 @@ layout {
     tab name="Overview" color="cyan" {
         pane split_direction="vertical" {
             pane command="sh" name="Worktree Status" size="60%" {
-                args "-c" "while true; do clear; ./zellij/worktree-status.sh; sleep 2; done"
+                args "-c" "while true; do clear; ./worktree-status.sh; sleep 2; done"
             }
             pane name="worktree-mgmt" size="40%" {
                 // Run wtls, wtrm, wta, wtab, wtp here

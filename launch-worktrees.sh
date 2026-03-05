@@ -225,15 +225,18 @@ HEADER
     script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     local esc_status_script
     esc_status_script=$(kdl_escape "$script_dir/worktree-status.sh")
+    local esc_aliases_script
+    esc_aliases_script=$(kdl_escape "$script_dir/git-worktree-aliases.sh")
 
     cat <<FOOTER
     // Overview tab — live worktree status dashboard
     tab name="Overview" color="cyan" {
         pane split_direction="vertical" {
-            pane command="watch" name="Worktree Status" size="60%" {
-                args "-n" "2" "-c" "$esc_status_script" "$esc_repo"
+            pane command="sh" name="Worktree Status" size="60%" {
+                args "-c" "while true; do clear; \"$esc_status_script\" \"$esc_repo\"; sleep 2; done"
             }
-            pane name="worktree-mgmt" size="40%" {
+            pane command="sh" name="worktree-mgmt" size="40%" {
+                args "-c" "source \"$esc_aliases_script\"; exec \$SHELL"
                 cwd "$esc_repo"
             }
         }
