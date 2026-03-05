@@ -233,7 +233,7 @@ HEADER
     tab name="Overview" color="cyan" {
         pane split_direction="vertical" {
             pane command="bash" name="Worktree Status" size="60%" {
-                args "-c" "while true; do _out=\$(\"$esc_status_script\" \"$esc_repo\" 2>/dev/null); printf '\\033[H\\033[2J%s' \"\$_out\"; sleep 15; done"
+                args "-c" "while true; do _out=\$(\"$esc_status_script\" \"$esc_repo\" 2>/dev/null); clear; printf '%s' \"\$_out\"; sleep 15; done"
             }
             pane command="bash" name="worktree-mgmt" size="40%" {
                 args "-c" "source \"$esc_aliases_script\"; exec \$SHELL"
