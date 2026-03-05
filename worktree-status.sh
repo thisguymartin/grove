@@ -89,10 +89,9 @@ print_worktree() {
         fi
     fi
 
-    # Get last commit
-    local last_commit last_time
-    last_commit=$(git -C "$path" log -1 --format="%h %s" 2>/dev/null || echo "unknown")
-    last_time=$(git -C "$path" log -1 --format="%cr" 2>/dev/null || echo "")
+    # Get recent commits (what's being worked on)
+    local recent_commits
+    recent_commits=$(git -C "$path" log -3 --format="%h %s" 2>/dev/null || echo "")
 
     # Status indicator
     local status_icon
@@ -105,24 +104,54 @@ print_worktree() {
     # Print worktree info
     echo -e "${BOLD}${CYAN}[${display_name}]${RESET}  ${status_icon}${ahead_behind}"
     echo -e "  ${DIM}Path:${RESET} $path"
-    echo -e "  ${DIM}Last:${RESET} $last_commit ${DIM}($last_time)${RESET}"
+
+    # Recent commits — what's being worked on
+    if [[ -n "$recent_commits" ]]; then
+        echo -e "  ${DIM}Recent commits:${RESET}"
+        local first=true
+        while IFS= read -r commit_line; do
+            local sha="${commit_line:0:7}"
+            local msg="${commit_line:8}"
+            if [[ "$first" == true ]]; then
+                echo -e "    ${GREEN}●${RESET} ${sha} ${msg}"
+                first=false
+            else
+                echo -e "    ${DIM}○ ${sha} ${msg}${RESET}"
+            fi
+        done <<< "$recent_commits"
+    fi
 
     # Show changed files if any
     if [[ -n "$changes" ]]; then
-        echo -e "  ${DIM}Changes:${RESET}"
-        echo "$changes" | head -10 | while IFS= read -r f; do
+        local staged_count unstaged_count untracked_count
+        staged_count=$(echo "$changes" | grep -cE '^[MADRCU]' 2>/dev/null || echo 0)
+        unstaged_count=$(echo "$changes" | grep -cE '^ [MD]' 2>/dev/null || echo 0)
+        untracked_count=$(echo "$changes" | grep -c '^\?\?' 2>/dev/null || echo 0)
+
+        local parts=()
+        [[ "$staged_count" -gt 0 ]]   && parts+=("${GREEN}${staged_count} staged${RESET}")
+        [[ "$unstaged_count" -gt 0 ]] && parts+=("${YELLOW}${unstaged_count} modified${RESET}")
+        [[ "$untracked_count" -gt 0 ]] && parts+=("${DIM}${untracked_count} untracked${RESET}")
+
+        local summary
+        summary=$(IFS=", "; echo "${parts[*]}")
+        echo -e "  ${DIM}Changes:${RESET} $summary"
+
+        echo "$changes" | head -8 | while IFS= read -r f; do
             local marker="${f:0:2}"
             local fname="${f:3}"
             case "$marker" in
-                "M "|" M"|"MM") echo -e "    ${YELLOW}M${RESET} $fname" ;;
-                "A "|"??"*)     echo -e "    ${GREEN}+${RESET} $fname" ;;
-                "D "|" D")      echo -e "    ${RED}-${RESET} $fname" ;;
-                "R "*)          echo -e "    ${CYAN}R${RESET} $fname" ;;
-                *)              echo -e "    $f" ;;
+                "M "|"MM") echo -e "    ${GREEN}M${RESET} $fname" ;;
+                " M")      echo -e "    ${YELLOW}M${RESET} $fname" ;;
+                "A ")      echo -e "    ${GREEN}A${RESET} $fname" ;;
+                "D "|" D") echo -e "    ${RED}D${RESET} $fname" ;;
+                "R "*)     echo -e "    ${CYAN}R${RESET} $fname" ;;
+                "??")      echo -e "    ${DIM}? $fname${RESET}" ;;
+                *)         echo -e "    $f" ;;
             esac
         done
-        if [[ "$change_count" -gt 10 ]]; then
-            echo -e "    ${DIM}... and $((change_count - 10)) more${RESET}"
+        if [[ "$change_count" -gt 8 ]]; then
+            echo -e "    ${DIM}... and $((change_count - 8)) more${RESET}"
         fi
     fi
 

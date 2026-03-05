@@ -232,10 +232,10 @@ HEADER
     // Overview tab — live worktree status dashboard
     tab name="Overview" color="cyan" {
         pane split_direction="vertical" {
-            pane command="sh" name="Worktree Status" size="60%" {
-                args "-c" "while true; do clear; \"$esc_status_script\" \"$esc_repo\"; sleep 2; done"
+            pane command="bash" name="Worktree Status" size="60%" {
+                args "-c" "while true; do _out=\$(\"$esc_status_script\" \"$esc_repo\" 2>/dev/null); printf '\\033[H\\033[2J%s' \"\$_out\"; sleep 15; done"
             }
-            pane command="sh" name="worktree-mgmt" size="40%" {
+            pane command="bash" name="worktree-mgmt" size="40%" {
                 args "-c" "source \"$esc_aliases_script\"; exec \$SHELL"
                 cwd "$esc_repo"
             }
