@@ -22,31 +22,42 @@ RESET='\033[0m'
 # ---------------------------------------------------------------------------
 # Header
 # ---------------------------------------------------------------------------
-echo -e "${BOLD}${CYAN}AI Session Dashboard${RESET}  ${DIM}$(date '+%Y-%m-%d %H:%M:%S')${RESET}"
+echo -e "${BOLD}${CYAN}AI Agent Dashboard${RESET}  ${DIM}$(date '+%Y-%m-%d %H:%M:%S')${RESET}"
 echo ""
 
 # ---------------------------------------------------------------------------
 # Active Claude agents (running processes)
 # ---------------------------------------------------------------------------
 echo -e "${BOLD}Active Agents${RESET}"
-active=$(pgrep -a -f "claude" 2>/dev/null | grep -v grep | grep -v "ai-status" || true)
-if [[ -z "$active" ]]; then
-    echo -e "  ${DIM}No active Claude processes${RESET}"
-else
-    echo "$active" | while IFS= read -r proc; do
+agent_count=0
+for editor in claude gemini opencode; do
+    active=$(pgrep -a -f "$editor" 2>/dev/null | grep -v grep | grep -v "ai-status" | grep -v "resource-monitor" || true)
+    if [[ -z "$active" ]]; then
+        continue
+    fi
+    while IFS= read -r proc; do
         pid=$(echo "$proc" | awk '{print $1}')
         cwd=$(lsof -p "$pid" -a -d cwd -Fn 2>/dev/null | grep '^n' | head -1 | sed 's/^n//' || echo "unknown")
         branch=$(git -C "$cwd" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "?")
         project=$(basename "$cwd")
-        echo -e "  ${GREEN}●${RESET} ${BOLD}${project}${RESET} ${DIM}/${branch}${RESET}  ${DIM}pid:${pid}${RESET}"
-    done
+        case "$editor" in
+            claude)   icon="${GREEN}●${RESET}"; label="Claude" ;;
+            gemini)   icon="${YELLOW}●${RESET}"; label="Gemini" ;;
+            opencode) icon="${MAGENTA}●${RESET}"; label="OpenCode" ;;
+        esac
+        echo -e "  ${icon} ${BOLD}${project}${RESET} ${DIM}/${branch}${RESET}  ${DIM}[${label}] pid:${pid}${RESET}"
+        agent_count=$((agent_count + 1))
+    done <<< "$active"
+done
+if [[ "$agent_count" -eq 0 ]]; then
+    echo -e "  ${DIM}No active AI agent processes${RESET}"
 fi
 echo ""
 
 # ---------------------------------------------------------------------------
 # Token usage — parsed from JSONL, today + all-time per project
 # ---------------------------------------------------------------------------
-echo -e "${BOLD}Token Usage${RESET}"
+echo -e "${BOLD}Token Usage (Claude)${RESET}"
 
 if [[ ! -d "$CLAUDE_DIR" ]]; then
     echo -e "  ${DIM}No Claude session data found at $CLAUDE_DIR${RESET}"
@@ -182,7 +193,7 @@ echo ""
 # ---------------------------------------------------------------------------
 # Recent sessions
 # ---------------------------------------------------------------------------
-echo -e "${BOLD}Recent Sessions${RESET}"
+echo -e "${BOLD}Recent Sessions (Claude)${RESET}"
 
 if [[ -d "$CLAUDE_DIR" ]]; then
     python3 - "$CLAUDE_DIR" <<'PYEOF'

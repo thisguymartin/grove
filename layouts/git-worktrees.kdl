@@ -69,15 +69,21 @@ layout {
         }
     }
 
-    // Tab: Overview — live project dashboards (worktree status + AI spend)
+    // Tab: Overview — live project dashboards
     tab name="Overview" color="cyan" {
-        pane split_direction="vertical" {
-            pane command="sh" name="Worktree Status" size="60%" {
+        pane split_direction="vertical" size="70%" {
+            pane command="sh" name="Worktree Status" size="40%" {
                 args "-c" "while true; do clear; ./worktree-status.sh; sleep 15; done"
             }
-            pane command="sh" name="AI Spend" size="40%" {
+            pane command="sh" name="AI Status" size="30%" {
                 args "-c" "while true; do clear; ./ai-status.sh; sleep 30; done"
             }
+            pane command="sh" name="PR Status" size="30%" {
+                args "-c" "while true; do clear; ./pr-status.sh; sleep 60; done"
+            }
+        }
+        pane command="sh" name="Resources" size="30%" {
+            args "-c" "while true; do clear; ./resource-monitor.sh; sleep 5; done"
         }
     }
 }

@@ -6,6 +6,9 @@
 | **`grove`** | **Launch workspace** (AI + Git + Workbench per worktree, default: claude) |
 | `grove opencode` | Launch with OpenCode instead of Claude |
 | `grove gemini` | Launch with Gemini CLI instead of Claude |
+| `grove .` | Launch workspace for current dir (explicit) |
+| `grove /path/to/repo` | Launch workspace for a specific repo directory |
+| `grove /path gemini` | Launch for a specific repo with a specific AI editor |
 | `zj-kill` | Kill all Zellij sessions (clean slate) |
 | `lg` | Open LazyGit manually |
 
@@ -40,6 +43,12 @@
 | `wtls` | **List** all worktrees (`git worktree list`) |
 | `wtrm <path>` | **Remove** a worktree (force) |
 | `wtp [main]` | **Prune** merged / squash-merged / rebased worktrees |
+| `wtcd <branch>` | **cd** into a worktree by branch name |
+| `wtinfo [branch]` | **Info** — path, HEAD, ahead/behind, dirty status |
+| `wtdiff [branch]` | **Diff** between worktree branch and base branch |
+| `wtrn <old> <new>` | **Rename** a worktree's branch |
+| `wtlock <path>` | **Lock** a worktree |
+| `wtunlock <path>` | **Unlock** a worktree |
 | `wtui` | **Open** Zellij with one tab per worktree |
 | `zj-kill` | **Kill** all Zellij sessions |
 
@@ -63,6 +72,12 @@ Tab navigation once inside the session:
 | `gwt ls` | List all worktrees |
 | `gwt prune` | Remove merged/stale worktrees |
 | `gwt tab` | **Launch Zellij with one tab per worktree** |
+| `gwt cd <branch>` | Print worktree path for a branch |
+| `gwt info [branch]` | Show path, HEAD, ahead/behind, dirty status |
+| `gwt diff [branch]` | Diff between branch and base branch |
+| `gwt rename <old> <new>` | Rename a worktree's branch |
+| `gwt lock <path>` | Lock a worktree |
+| `gwt unlock <path>` | Unlock a worktree |
 
 ---
 

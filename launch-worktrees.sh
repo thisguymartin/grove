@@ -37,7 +37,15 @@ SESSION_NAME="git-worktrees"
 AI_EDITOR="${AI_EDITOR:-claude}"
 
 # Tab color palette — cycles through these for each worktree tab
-TAB_COLORS=("green" "blue" "yellow" "magenta" "cyan" "orange" "red")
+# 15 visually distinct colors (cyan is reserved for the Overview tab)
+TAB_COLORS=(
+    "green" "blue" "yellow" "magenta" "orange" "red"
+    "#d75fd7" "#00afd7" "#5fd700" "#af87ff"
+    "#d7af5f" "#ff5f87" "#00d7af" "#5f87d7" "#d78700"
+)
+
+# Colored dot emoji per tab — visible even when Zellij dims inactive tabs
+TAB_DOTS=("🟢" "🔵" "🟡" "🟣" "🟠" "🔴" "🔶" "🔷" "⚪" "⚫" "🟤" "🟥" "🩶" "🟦" "🟧")
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -210,12 +218,10 @@ HEADER
 
         local color_index=$((i % ${#TAB_COLORS[@]}))
         local tab_color="${TAB_COLORS[$color_index]}"
+        local dot_index=$((i % ${#TAB_DOTS[@]}))
+        local tab_dot="${TAB_DOTS[$dot_index]}"
 
-        # Number each tab so they're distinguishable even when inactive
-        # (Zellij only tints the active tab with its color)
-        local tab_num=$((i + 1))
-
-        echo "    tab name=\"${tab_num}:${esc_name}\" color=\"$tab_color\" {"
+        echo "    tab name=\"${tab_dot} ${esc_name}\" color=\"$tab_color\" {"
 
         # TOP (70%): LazyGit + AI Agent side by side
         echo "        pane split_direction=\"vertical\" size=\"70%\" {"
@@ -259,17 +265,27 @@ HEADER
     esc_status_script=$(kdl_escape "$script_dir/worktree-status.sh")
     local esc_ai_status_script
     esc_ai_status_script=$(kdl_escape "$script_dir/ai-status.sh")
+    local esc_pr_status_script
+    esc_pr_status_script=$(kdl_escape "$script_dir/pr-status.sh")
+    local esc_resource_monitor_script
+    esc_resource_monitor_script=$(kdl_escape "$script_dir/resource-monitor.sh")
 
     cat <<FOOTER
-    // Overview tab — live project dashboards (worktree status + AI spend)
-    tab name="Overview" color="cyan" {
-        pane split_direction="vertical" {
-            pane command="bash" name="Worktree Status" size="60%" {
+    // Overview tab — live project dashboards
+    tab name="📊 Overview" color="cyan" {
+        pane split_direction="vertical" size="70%" {
+            pane command="bash" name="Worktree Status" size="40%" {
                 args "-c" "while true; do _out=\$(\"$esc_status_script\" \"$esc_repo\" 2>/dev/null); clear; printf '%s' \"\$_out\"; sleep 15; done"
             }
-            pane command="bash" name="AI Spend" size="40%" {
+            pane command="bash" name="AI Status" size="30%" {
                 args "-c" "while true; do _out=\$(\"$esc_ai_status_script\" 2>/dev/null); clear; printf '%s' \"\$_out\"; sleep 30; done"
             }
+            pane command="bash" name="PR Status" size="30%" {
+                args "-c" "while true; do _out=\$(\"$esc_pr_status_script\" \"$esc_repo\" 2>/dev/null); clear; printf '%s' \"\$_out\"; sleep 60; done"
+            }
+        }
+        pane command="bash" name="Resources" size="30%" {
+            args "-c" "while true; do _out=\$(\"$esc_resource_monitor_script\" 2>/dev/null); clear; printf '%s' \"\$_out\"; sleep 5; done"
         }
     }
 }

@@ -62,9 +62,12 @@ source ~/.zshrc
 `cd` into any git repo and run:
 
 ```bash
-grove                # Launch workspace (default: claude)
-grove gemini         # Use Gemini CLI instead
-grove opencode       # Use OpenCode instead
+grove                        # Launch workspace (default: claude)
+grove gemini                 # Use Gemini CLI instead
+grove opencode               # Use OpenCode instead
+grove .                      # Current dir (explicit), claude
+grove /path/to/repo          # Specific repo dir, claude
+grove /path/to/repo gemini   # Specific repo dir, gemini
 ```
 
 This will:
@@ -77,19 +80,27 @@ Sessions auto-quit when you close the terminal — no stale sessions.
 
 ## Commands
 
-| Command             | Description                                                    |
-| :------------------ | :------------------------------------------------------------- |
-| **`grove`**         | Launch workspace — colored tabs per worktree (default: claude) |
-| `grove opencode`    | Launch with OpenCode instead of Claude                         |
-| `grove gemini`      | Launch with Gemini CLI instead of Claude                       |
-| **`wtab <branch>`** | Create a new branch + worktree                                 |
-| **`wta <branch>`**  | Add worktree for an existing remote branch                     |
-| **`wtls`**          | List all worktrees                                             |
-| **`wtrm <path>`**   | Remove a worktree (force)                                      |
-| **`wtp [base]`**    | Prune worktrees merged/squash-merged/rebased into base branch  |
-| `wtui [path]`       | Launch Zellij per-worktree tabs (without AI editor arg)        |
-| `wtstatus [path]`   | Live worktree status dashboard (standalone)                    |
-| **`zj-kill`**       | Kill all Zellij sessions (clean slate)                         |
+| Command               | Description                                                    |
+| :-------------------- | :------------------------------------------------------------- |
+| **`grove`**           | Launch workspace — colored tabs per worktree (default: claude) |
+| `grove opencode`      | Launch with OpenCode instead of Claude                         |
+| `grove gemini`        | Launch with Gemini CLI instead of Claude                       |
+| `grove /path`         | Launch workspace for a specific repo directory                 |
+| `grove /path gemini`  | Launch for a specific repo with a specific AI editor           |
+| **`wtab <branch>`**   | Create a new branch + worktree                                 |
+| **`wta <branch>`**    | Add worktree for an existing remote branch                     |
+| **`wtls`**            | List all worktrees                                             |
+| **`wtrm <path>`**     | Remove a worktree (force)                                      |
+| **`wtp [base]`**      | Prune worktrees merged/squash-merged/rebased into base branch  |
+| **`wtcd <branch>`**   | `cd` into a worktree by branch name                            |
+| **`wtinfo [branch]`** | Show path, HEAD, ahead/behind, dirty status for a worktree     |
+| **`wtdiff [branch]`** | `git diff --stat` between worktree branch and base branch      |
+| **`wtrn <old> <new>`**| Rename a worktree's branch                                     |
+| **`wtlock <path>`**   | Lock a worktree                                                |
+| **`wtunlock <path>`** | Unlock a worktree                                              |
+| `wtui [path]`         | Launch Zellij per-worktree tabs (without AI editor arg)        |
+| `wtstatus [path]`     | Live worktree status dashboard (standalone)                    |
+| **`zj-kill`**         | Kill all Zellij sessions (clean slate)                         |
 
 ### Git Worktree Toolkit (`gwt`)
 
@@ -99,14 +110,20 @@ A standalone script for worktree lifecycle management:
 alias gwt='~/.local/share/grove/git-worktree.sh'
 ```
 
-| Command            | Description                                  |
-| :----------------- | :------------------------------------------- |
-| `gwt new <branch>` | Create a new branch and worktree             |
-| `gwt add <branch>` | Add a worktree for an existing branch        |
-| `gwt rm <branch>`  | Remove a worktree (prompts to delete branch) |
-| `gwt ls`           | List all worktrees                           |
-| `gwt prune`        | Remove worktrees for merged/stale branches   |
-| `gwt tab`          | Launch Zellij with one tab per worktree      |
+| Command                       | Description                                  |
+| :---------------------------- | :------------------------------------------- |
+| `gwt new <branch>`            | Create a new branch and worktree             |
+| `gwt add <branch>`            | Add a worktree for an existing branch        |
+| `gwt rm <branch>`             | Remove a worktree (prompts to delete branch) |
+| `gwt ls`                      | List all worktrees                           |
+| `gwt prune`                   | Remove worktrees for merged/stale branches   |
+| `gwt tab`                     | Launch Zellij with one tab per worktree      |
+| `gwt cd <branch>`             | Print the worktree path for a branch         |
+| `gwt info [branch]`           | Show path, HEAD, ahead/behind, dirty status  |
+| `gwt diff [branch]`           | Diff between branch and base branch          |
+| `gwt rename <old> <new>`      | Rename a worktree's branch                   |
+| `gwt lock <path>`             | Lock a worktree                              |
+| `gwt unlock <path>`           | Unlock a worktree                            |
 
 ### Git Config Aliases (optional)
 
@@ -138,6 +155,16 @@ grove
 # Alt+Left/Right to switch between worktree tabs
 # Alt+Arrow Keys to move between panes
 
+# Inspect worktrees
+wtcd feature/auth          # cd into a worktree
+wtinfo feature/auth        # show path, HEAD, ahead/behind, status
+wtdiff feature/auth        # diff vs base branch
+
+# Rename / lock
+wtrn old-name new-name    # rename a worktree's branch
+wtlock /path/to/worktree   # lock a worktree
+wtunlock /path/to/worktree # unlock a worktree
+
 # Clean up when done
 wtrm /path/to/worktree    # remove a specific worktree
 wtp                        # auto-prune merged worktrees
@@ -157,7 +184,7 @@ zellij kill-session <name> # Kill a specific session
 
 ## Tab Colors
 
-Each worktree tab cycles through: **green, blue, yellow, magenta, cyan, orange, red**. The Overview tab is always **cyan**. Colors repeat if you have more than 7 worktrees.
+Each worktree tab cycles through **15 visually distinct colors** (green, blue, yellow, magenta, orange, red, pink, sky blue, lime, purple, sandy gold, coral, teal, steel blue, dark orange). The Overview tab is always **cyan** (reserved, not in the cycling palette). Colors repeat if you have more than 15 worktrees.
 
 ## Worktree Directory Structure
 

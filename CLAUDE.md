@@ -13,9 +13,11 @@ Grove is an AI-native terminal workspace that orchestrates **git worktrees**, **
 brew bundle --file=brewfile
 
 # Run Grove (from any git repo with worktrees)
-grove                  # defaults to claude as AI editor
-grove gemini           # use gemini CLI
-grove opencode         # use opencode
+grove                        # defaults to claude as AI editor
+grove gemini                 # use gemini CLI
+grove opencode               # use opencode
+grove /path/to/repo          # specific repo dir, claude
+grove /path/to/repo gemini   # specific repo dir, gemini
 
 # Worktree management (shell aliases from git-worktree-aliases.sh)
 wtab <branch>          # create new branch + worktree
@@ -23,6 +25,12 @@ wta <branch>           # add worktree for existing branch
 wtrm <path>            # force remove worktree
 wtls                   # list worktrees
 wtp [base-branch]      # prune merged worktrees
+wtcd <branch>          # cd into a worktree by branch name
+wtinfo [branch]        # show path, HEAD, ahead/behind, dirty status
+wtdiff [branch]        # diff vs base branch
+wtrn <old> <new>       # rename a worktree's branch
+wtlock <path>          # lock a worktree
+wtunlock <path>        # unlock a worktree
 
 # Standalone script (can be aliased as gwt)
 bash git-worktree.sh new <branch>
@@ -31,6 +39,12 @@ bash git-worktree.sh rm <branch>
 bash git-worktree.sh ls
 bash git-worktree.sh prune
 bash git-worktree.sh tab [--layout-only]
+bash git-worktree.sh cd <branch>
+bash git-worktree.sh info [branch]
+bash git-worktree.sh diff [branch]
+bash git-worktree.sh rename <old> <new>
+bash git-worktree.sh lock <path>
+bash git-worktree.sh unlock <path>
 ```
 
 There are no tests or linting configured — this is a shell-script-only project.
@@ -39,7 +53,7 @@ There are no tests or linting configured — this is a shell-script-only project
 
 ### Entry Flow
 ```
-grove [ai-editor] → launch-grove.sh → launch-worktrees.sh
+grove [path] [ai-editor] → launch-grove.sh [path] [ai-editor] → launch-worktrees.sh --ai <editor> [path]
 ```
 
 `launch-worktrees.sh` is the core orchestrator:
@@ -52,9 +66,11 @@ grove [ai-editor] → launch-grove.sh → launch-worktrees.sh
 - **AI Agent** (30% width) — Claude/Gemini/OpenCode cwd'd to worktree
 - **Workbench Shell** (bottom 30% height) — for tests, servers, etc.
 
-### Overview Tab (Cyan)
-- `worktree-status.sh` (left 60%) — live worktree status, refreshes every 15s
-- `ai-status.sh` (right 40%) — active Claude sessions + token usage, refreshes every 30s
+### Overview Tab (Cyan) — 4 panes
+- `worktree-status.sh` (top-left 40%) — live worktree status, refreshes every 15s
+- `ai-status.sh` (top-center 30%) — active AI agents + Claude token usage, refreshes every 30s
+- `pr-status.sh` (top-right 30%) — PR/CI status per worktree branch, refreshes every 60s
+- `resource-monitor.sh` (bottom 30%) — CPU/memory for AI agent processes, refreshes every 5s
 
 ### Key Files
 | File | Purpose |
@@ -63,8 +79,10 @@ grove [ai-editor] → launch-grove.sh → launch-worktrees.sh
 | `launch-worktrees.sh` | Core: dynamic Zellij layout generation (~304 lines) |
 | `git-worktree.sh` | Standalone worktree lifecycle management (~423 lines) |
 | `git-worktree-aliases.sh` | Shell aliases/functions sourced in ~/.zshrc |
-| `ai-status.sh` | Claude session dashboard with Python analytics |
+| `ai-status.sh` | AI agent dashboard (Claude/Gemini/OpenCode) with token analytics |
 | `worktree-status.sh` | Live worktree status dashboard |
+| `pr-status.sh` | PR/CI status dashboard per worktree branch (requires `gh`) |
+| `resource-monitor.sh` | CPU/memory monitor for AI agent processes |
 | `layouts/git-worktrees.kdl` | Static reference layout (dynamic layout is generated instead) |
 | `install/install.sh` | Installation/uninstallation script |
 

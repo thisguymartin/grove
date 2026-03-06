@@ -191,6 +191,168 @@ alias wtls='git worktree list'
 alias wtrm='git worktree remove --force'
 
 # ---------------------------------------------------------------------------
+# wtcd — cd into a worktree by branch name
+# Usage: wtcd <branch>
+# ---------------------------------------------------------------------------
+wtcd() {
+    if [[ -z "${1:-}" ]]; then
+        echo "Usage: wtcd <branch>"
+        return 1
+    fi
+    local branch="$1"
+    local wt_path
+    wt_path=$(git worktree list --porcelain | awk -v br="refs/heads/$branch" '
+        /^worktree / { wt = substr($0, 10) }
+        /^branch /   { if (substr($0, 8) == br) print wt }
+    ')
+    if [[ -z "$wt_path" ]]; then
+        echo "No worktree found for branch '$branch'"
+        return 1
+    fi
+    echo "Changing to worktree: $wt_path"
+    cd "$wt_path" || return 1
+}
+
+# ---------------------------------------------------------------------------
+# wtinfo — show info about a worktree (path, HEAD, ahead/behind, dirty)
+# Usage: wtinfo [branch]   (defaults to current branch)
+# ---------------------------------------------------------------------------
+wtinfo() {
+    local branch="${1:-$(git symbolic-ref --short HEAD 2>/dev/null)}"
+    if [[ -z "$branch" ]]; then
+        echo "Error: not on a branch and no branch specified"
+        return 1
+    fi
+
+    local wt_path head_sha
+    while IFS= read -r line; do
+        case "$line" in
+            worktree\ *) wt_path="${line#worktree }" ;;
+            HEAD\ *)     head_sha="${line#HEAD }" ;;
+            branch\ *)
+                if [[ "${line#branch refs/heads/}" == "$branch" ]]; then
+                    break
+                fi
+                wt_path="" ; head_sha=""
+                ;;
+            "") wt_path="" ; head_sha="" ;;
+        esac
+    done < <(git worktree list --porcelain)
+
+    if [[ -z "$wt_path" ]]; then
+        echo "No worktree found for branch '$branch'"
+        return 1
+    fi
+
+    echo "Branch:  $branch"
+    echo "Path:    $wt_path"
+    echo "HEAD:    ${head_sha:0:10}"
+
+    # Ahead/behind vs remote
+    local upstream
+    upstream=$(git -C "$wt_path" rev-parse --abbrev-ref "@{upstream}" 2>/dev/null || true)
+    if [[ -n "$upstream" ]]; then
+        local ab
+        ab=$(git -C "$wt_path" rev-list --left-right --count "$branch...$upstream" 2>/dev/null || true)
+        if [[ -n "$ab" ]]; then
+            local ahead behind
+            ahead=$(echo "$ab" | awk '{print $1}')
+            behind=$(echo "$ab" | awk '{print $2}')
+            echo "Remote:  $upstream (ahead $ahead, behind $behind)"
+        fi
+    else
+        echo "Remote:  (no upstream)"
+    fi
+
+    # Dirty status
+    local status
+    status=$(git -C "$wt_path" status --porcelain 2>/dev/null)
+    if [[ -n "$status" ]]; then
+        local count
+        count=$(echo "$status" | wc -l | tr -d ' ')
+        echo "Status:  dirty ($count changed file(s))"
+    else
+        echo "Status:  clean"
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# wtdiff — git diff --stat between a worktree branch and the base branch
+# Usage: wtdiff [branch]   (defaults to current branch)
+# ---------------------------------------------------------------------------
+wtdiff() {
+    local branch="${1:-$(git symbolic-ref --short HEAD 2>/dev/null)}"
+    if [[ -z "$branch" ]]; then
+        echo "Error: not on a branch and no branch specified"
+        return 1
+    fi
+
+    local default_base
+    default_base=$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null \
+        | sed 's@^origin/@@' || true)
+    local base="${GWT_BASE_BRANCH:-${default_base:-main}}"
+
+    echo "Diff: $branch vs $base"
+    echo "─────────────────────────────────────────"
+    git diff --stat "$base...$branch"
+}
+
+# ---------------------------------------------------------------------------
+# wtrn — rename a worktree's branch
+# Usage: wtrn <old-branch> <new-branch>
+# ---------------------------------------------------------------------------
+wtrn() {
+    if [[ -z "${1:-}" || -z "${2:-}" ]]; then
+        echo "Usage: wtrn <old-branch> <new-branch>"
+        return 1
+    fi
+    local old="$1" new="$2"
+
+    # Check that the old branch exists
+    if ! git show-ref --verify --quiet "refs/heads/$old"; then
+        echo "Error: branch '$old' does not exist"
+        return 1
+    fi
+
+    git branch -m "$old" "$new"
+    echo "Branch renamed: $old -> $new"
+
+    # Warn about path mismatch
+    local wt_path
+    wt_path=$(git worktree list --porcelain | awk -v br="refs/heads/$new" '
+        /^worktree / { wt = substr($0, 10) }
+        /^branch /   { if (substr($0, 8) == br) print wt }
+    ')
+    if [[ -n "$wt_path" ]]; then
+        echo "Note: worktree path is still: $wt_path"
+        echo "  The directory was not renamed. You may want to recreate the worktree"
+        echo "  if the path mismatch is confusing."
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# wtlock / wtunlock — lock or unlock a worktree
+# Usage: wtlock <path>   wtunlock <path>
+# ---------------------------------------------------------------------------
+wtlock() {
+    if [[ -z "${1:-}" ]]; then
+        echo "Usage: wtlock <path>"
+        return 1
+    fi
+    git worktree lock "$1"
+    echo "Worktree locked: $1"
+}
+
+wtunlock() {
+    if [[ -z "${1:-}" ]]; then
+        echo "Usage: wtunlock <path>"
+        return 1
+    fi
+    git worktree unlock "$1"
+    echo "Worktree unlocked: $1"
+}
+
+# ---------------------------------------------------------------------------
 # wtstatus — show live worktree status dashboard (standalone, no Zellij)
 # Usage: wtstatus [repo-path]
 # ---------------------------------------------------------------------------
@@ -220,7 +382,12 @@ wtui() {
 
 # ---------------------------------------------------------------------------
 # grove — launch the full AI-native workspace (God Mode)
-# Usage: grove [ai-editor]   (default: claude, options: claude, gemini, opencode)
+# Usage: grove [path] [ai-editor]
+#   grove                        # current dir, claude
+#   grove gemini                 # current dir, gemini
+#   grove .                      # current dir (explicit), claude
+#   grove /path/to/repo          # specific dir, claude
+#   grove /path/to/repo gemini   # specific dir, gemini
 #
 # Works from any git repo. Launches Zellij with one tab per worktree,
 # each containing LazyGit + AI Agent + Workbench.
@@ -233,8 +400,23 @@ grove() {
         return 1
     fi
 
-    if [[ -n "${1:-}" ]]; then
-        bash "$launcher" "$1"
+    local repo_path="" ai_editor=""
+
+    # If first arg is a directory, treat as repo path
+    if [[ -n "${1:-}" && -d "$1" ]]; then
+        repo_path="$1"
+        shift
+    fi
+
+    # Remaining arg (if any) is the AI editor
+    ai_editor="${1:-}"
+
+    if [[ -n "$repo_path" && -n "$ai_editor" ]]; then
+        bash "$launcher" "$repo_path" "$ai_editor"
+    elif [[ -n "$repo_path" ]]; then
+        bash "$launcher" "$repo_path"
+    elif [[ -n "$ai_editor" ]]; then
+        bash "$launcher" "$ai_editor"
     else
         bash "$launcher"
     fi

@@ -311,18 +311,28 @@ HEADER
     local ai_editor="${AI_EDITOR:-claude}"
 
     # Tab color palette — cycles through these for each worktree tab
-    local -a tab_colors=("green" "blue" "yellow" "magenta" "cyan" "orange" "red")
+    # 15 visually distinct colors (cyan is reserved for the Overview tab)
+    local -a tab_colors=(
+        "green" "blue" "yellow" "magenta" "orange" "red"
+        "#d75fd7" "#00afd7" "#5fd700" "#af87ff"
+        "#d7af5f" "#ff5f87" "#00d7af" "#5f87d7" "#d78700"
+    )
+
+    # Colored dot emoji per tab — visible even when Zellij dims inactive tabs
+    local -a tab_dots=("🟢" "🔵" "🟡" "🟣" "🟠" "🔴" "🔶" "🔷" "⚪" "⚫" "🟤" "🟥" "🩶" "🟦" "🟧")
 
     # One tab per worktree
     for i in "${!paths[@]}"; do
         local path="${paths[$i]}"
         local branch="${branches[$i]}"
-        local color_index=$((i % ${#tab_colors[@]}))
+        local color_index=$((i % ${#tab_colors[@}}))
         local tab_color="${tab_colors[$color_index]}"
+        local dot_index=$((i % ${#tab_dots[@]}))
+        local tab_dot="${tab_dots[$dot_index]}"
 
         cat <<EOF
 
-    tab name="${branch}" color="${tab_color}" {
+    tab name="${tab_dot} ${branch}" color="${tab_color}" {
         // TOP: LazyGit + AI Agent side by side
         pane split_direction="vertical" size="70%" {
             pane command="lazygit" name="LazyGit" {
@@ -361,6 +371,132 @@ EOF
 FOOTER
 }
 
+# ─── New Commands ─────────────────────────────────────────────────────────────
+
+cmd_cd() {
+    local branch="${1:?Usage: git-worktree.sh cd <branch>}"
+    local wt_path
+    wt_path=$(git worktree list --porcelain | awk -v br="refs/heads/$branch" '
+        /^worktree / { wt = substr($0, 10) }
+        /^branch /   { if (substr($0, 8) == br) print wt }
+    ')
+    if [[ -z "$wt_path" ]]; then
+        echo "No worktree found for branch '$branch'"
+        exit 1
+    fi
+    # Subprocess can't change parent shell's cwd, so just print the path
+    echo "$wt_path"
+}
+
+cmd_info() {
+    local branch="${1:-$(git symbolic-ref --short HEAD 2>/dev/null)}"
+    if [[ -z "$branch" ]]; then
+        echo "Error: not on a branch and no branch specified"
+        exit 1
+    fi
+
+    local wt_path="" head_sha=""
+    while IFS= read -r line; do
+        case "$line" in
+            worktree\ *) wt_path="${line#worktree }" ;;
+            HEAD\ *)     head_sha="${line#HEAD }" ;;
+            branch\ *)
+                if [[ "${line#branch refs/heads/}" == "$branch" ]]; then
+                    break
+                fi
+                wt_path="" ; head_sha=""
+                ;;
+            "") wt_path="" ; head_sha="" ;;
+        esac
+    done < <(git worktree list --porcelain)
+
+    if [[ -z "$wt_path" ]]; then
+        echo "No worktree found for branch '$branch'"
+        exit 1
+    fi
+
+    echo "Branch:  $branch"
+    echo "Path:    $wt_path"
+    echo "HEAD:    ${head_sha:0:10}"
+
+    local upstream
+    upstream=$(git -C "$wt_path" rev-parse --abbrev-ref "@{upstream}" 2>/dev/null || true)
+    if [[ -n "$upstream" ]]; then
+        local ab
+        ab=$(git -C "$wt_path" rev-list --left-right --count "$branch...$upstream" 2>/dev/null || true)
+        if [[ -n "$ab" ]]; then
+            local ahead behind
+            ahead=$(echo "$ab" | awk '{print $1}')
+            behind=$(echo "$ab" | awk '{print $2}')
+            echo "Remote:  $upstream (ahead $ahead, behind $behind)"
+        fi
+    else
+        echo "Remote:  (no upstream)"
+    fi
+
+    local status
+    status=$(git -C "$wt_path" status --porcelain 2>/dev/null)
+    if [[ -n "$status" ]]; then
+        local count
+        count=$(echo "$status" | wc -l | tr -d ' ')
+        echo "Status:  dirty ($count changed file(s))"
+    else
+        echo "Status:  clean"
+    fi
+}
+
+cmd_diff() {
+    local branch="${1:-$(git symbolic-ref --short HEAD 2>/dev/null)}"
+    if [[ -z "$branch" ]]; then
+        echo "Error: not on a branch and no branch specified"
+        exit 1
+    fi
+
+    local default_base
+    default_base=$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null \
+        | sed 's@^origin/@@' || true)
+    local base="${GWT_BASE_BRANCH:-${default_base:-main}}"
+
+    echo "Diff: $branch vs $base"
+    echo "─────────────────────────────────────────"
+    git diff --stat "$base...$branch"
+}
+
+cmd_rename() {
+    local old="${1:?Usage: git-worktree.sh rename <old-branch> <new-branch>}"
+    local new="${2:?Usage: git-worktree.sh rename <old-branch> <new-branch>}"
+
+    if ! git show-ref --verify --quiet "refs/heads/$old"; then
+        echo "Error: branch '$old' does not exist"
+        exit 1
+    fi
+
+    git branch -m "$old" "$new"
+    echo "Branch renamed: $old -> $new"
+
+    local wt_path
+    wt_path=$(git worktree list --porcelain | awk -v br="refs/heads/$new" '
+        /^worktree / { wt = substr($0, 10) }
+        /^branch /   { if (substr($0, 8) == br) print wt }
+    ')
+    if [[ -n "$wt_path" ]]; then
+        echo "Note: worktree path is still: $wt_path"
+        echo "  The directory was not renamed."
+    fi
+}
+
+cmd_lock() {
+    local path="${1:?Usage: git-worktree.sh lock <path>}"
+    git worktree lock "$path"
+    echo "Worktree locked: $path"
+}
+
+cmd_unlock() {
+    local path="${1:?Usage: git-worktree.sh unlock <path>}"
+    git worktree unlock "$path"
+    echo "Worktree unlocked: $path"
+}
+
 # ─── Main Dispatch ────────────────────────────────────────────────────────────
 
 usage() {
@@ -371,17 +507,23 @@ Usage:
   git-worktree.sh <command> [args]
 
 Commands:
-  add   <branch>     Add a worktree for an existing branch
-  new   <branch>     Create a new branch + worktree
-  rm    <branch>     Remove a worktree (prompts to delete branch)
-  ls                 List all worktrees
-  prune              Remove worktrees for merged/stale branches
-  tab                Launch Zellij with one tab per worktree
-  tab --layout-only  Print the generated Zellij layout (no launch)
-  help               Show this help message
+  add    <branch>              Add a worktree for an existing branch
+  new    <branch>              Create a new branch + worktree
+  rm     <branch>              Remove a worktree (prompts to delete branch)
+  ls                           List all worktrees
+  prune                        Remove worktrees for merged/stale branches
+  tab                          Launch Zellij with one tab per worktree
+  tab    --layout-only         Print the generated Zellij layout (no launch)
+  cd     <branch>              Print the worktree path for a branch
+  info   [branch]              Show path, HEAD, ahead/behind, dirty status
+  diff   [branch]              git diff --stat between branch and base
+  rename <old> <new>           Rename a worktree's branch
+  lock   <path>                Lock a worktree
+  unlock <path>                Unlock a worktree
+  help                         Show this help message
 
 Environment Variables:
-  GWT_BASE_BRANCH    Base branch for prune (default: main)
+  GWT_BASE_BRANCH    Base branch for prune/diff (default: main)
   GWT_WORKTREE_DIR   Override worktree parent directory
 
 Examples:
@@ -391,6 +533,11 @@ Examples:
   git-worktree.sh tab                      # Open each worktree in its own tab
   git-worktree.sh rm feature/login         # Remove worktree
   git-worktree.sh prune                    # Clean up merged worktrees
+  git-worktree.sh info feature/login       # Show worktree details
+  git-worktree.sh diff feature/login       # Diff vs base branch
+  git-worktree.sh rename old-name new-name # Rename branch
+  git-worktree.sh lock /path/to/worktree   # Lock a worktree
+  git-worktree.sh unlock /path/to/worktree # Unlock a worktree
 
 Shell Aliases (add to ~/.zshrc or ~/.bashrc):
   alias gwt='~/workspace/grove/git-worktree.sh'
@@ -414,6 +561,12 @@ case "$COMMAND" in
     list)   cmd_ls ;;
     prune)  cmd_prune ;;
     tab)    cmd_tab "$@" ;;
+    cd)     cmd_cd "$@" ;;
+    info)   cmd_info "$@" ;;
+    diff)   cmd_diff "$@" ;;
+    rename) cmd_rename "$@" ;;
+    lock)   cmd_lock "$@" ;;
+    unlock) cmd_unlock "$@" ;;
     help|--help|-h) usage ;;
     *)
         echo "Unknown command: $COMMAND"
