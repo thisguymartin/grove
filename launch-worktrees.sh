@@ -7,8 +7,9 @@
 #   ./launch-worktrees.sh --layout-only    # Print KDL to stdout (no launch)
 #
 # Each worktree gets its own Zellij tab containing:
-#   Left:  lazygit focused on that worktree (60%)
-#   Right: Workbench shell (top 40%) + AI Agent (bottom 60%) — 40% total width
+#   Left:   lazygit focused on that worktree (60%)
+#   Middle: Workbench shell (30% of right column)
+#   Right:  AI Agent (70% of right column) — right column is 40% total width
 #
 # A top tab-bar shows all worktree tabs for easy navigation.
 # A final "Overview" tab shows live git status across all worktrees.
@@ -202,6 +203,41 @@ layout {
 
 HEADER
 
+    # Overview tab: live dashboard of all worktrees + management shell
+    local esc_repo
+    esc_repo=$(kdl_escape "$REPO_PATH")
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local esc_status_script
+    esc_status_script=$(kdl_escape "$script_dir/worktree-status.sh")
+    local esc_ai_status_script
+    esc_ai_status_script=$(kdl_escape "$script_dir/ai-status.sh")
+    local esc_pr_status_script
+    esc_pr_status_script=$(kdl_escape "$script_dir/pr-status.sh")
+    local esc_resource_monitor_script
+    esc_resource_monitor_script=$(kdl_escape "$script_dir/resource-monitor.sh")
+
+    cat <<OVERVIEW
+    // Overview tab — live project dashboards
+    tab name="📊 Overview" color="cyan" {
+        pane split_direction="vertical" size="70%" {
+            pane command="bash" name="Worktree Status" size="40%" {
+                args "-c" "while true; do _out=\$(\"$esc_status_script\" \"$esc_repo\" 2>/dev/null); clear; printf '%s' \"\$_out\"; sleep 15; done"
+            }
+            pane command="bash" name="AI Status" size="30%" {
+                args "-c" "while true; do _out=\$(\"$esc_ai_status_script\" 2>/dev/null); clear; printf '%s' \"\$_out\"; sleep 30; done"
+            }
+            pane command="bash" name="PR Status" size="30%" {
+                args "-c" "while true; do _out=\$(\"$esc_pr_status_script\" \"$esc_repo\" 2>/dev/null); clear; printf '%s' \"\$_out\"; sleep 60; done"
+            }
+        }
+        pane command="bash" name="Resources" size="30%" {
+            args "-c" "while true; do _out=\$(\"$esc_resource_monitor_script\" 2>/dev/null); clear; printf '%s' \"\$_out\"; sleep 5; done"
+        }
+    }
+
+OVERVIEW
+
     for i in "${!WT_PATHS[@]}"; do
         local path="${WT_PATHS[$i]}"
         local branch="${WT_BRANCHES[$i]}"
@@ -226,9 +262,13 @@ HEADER
             tab_prefix="${tab_dot} 🤖"
         fi
 
-        echo "    tab name=\"${tab_prefix} ${esc_name}\" color=\"$tab_color\" {"
+        if [[ "$i" -eq 0 ]]; then
+            echo "    tab name=\"${tab_prefix} ${esc_name}\" color=\"$tab_color\" focus=true {"
+        else
+            echo "    tab name=\"${tab_prefix} ${esc_name}\" color=\"$tab_color\" {"
+        fi
 
-        # LEFT/RIGHT split: LazyGit (60%) | Right column (40%)
+        # THREE-COLUMN split: LazyGit (60%) | Workbench (12%) | AI Agent (28%)
         echo "        pane split_direction=\"vertical\" {"
 
         # Left: lazygit (or plain shell if lazygit not installed)
@@ -242,7 +282,7 @@ HEADER
             echo "            }"
         fi
 
-        # Right: Workbench (top 40%) + AI Agent (bottom 60%)
+        # Right: Workbench (30%) | AI Agent (70%) — side by side
         echo "            pane split_direction=\"horizontal\" size=\"40%\" {"
 
         echo "                pane name=\"Workbench\" size=\"40%\" {"
@@ -264,38 +304,7 @@ HEADER
         echo ""
     done
 
-    # Overview tab: live dashboard of all worktrees + management shell
-    local esc_repo
-    esc_repo=$(kdl_escape "$REPO_PATH")
-    local script_dir
-    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    local esc_status_script
-    esc_status_script=$(kdl_escape "$script_dir/worktree-status.sh")
-    local esc_ai_status_script
-    esc_ai_status_script=$(kdl_escape "$script_dir/ai-status.sh")
-    local esc_pr_status_script
-    esc_pr_status_script=$(kdl_escape "$script_dir/pr-status.sh")
-    local esc_resource_monitor_script
-    esc_resource_monitor_script=$(kdl_escape "$script_dir/resource-monitor.sh")
-
-    cat <<FOOTER
-    // Overview tab — live project dashboards
-    tab name="📊 Overview" color="cyan" {
-        pane split_direction="vertical" size="70%" {
-            pane command="bash" name="Worktree Status" size="40%" {
-                args "-c" "while true; do _out=\$(\"$esc_status_script\" \"$esc_repo\" 2>/dev/null); clear; printf '%s' \"\$_out\"; sleep 15; done"
-            }
-            pane command="bash" name="AI Status" size="30%" {
-                args "-c" "while true; do _out=\$(\"$esc_ai_status_script\" 2>/dev/null); clear; printf '%s' \"\$_out\"; sleep 30; done"
-            }
-            pane command="bash" name="PR Status" size="30%" {
-                args "-c" "while true; do _out=\$(\"$esc_pr_status_script\" \"$esc_repo\" 2>/dev/null); clear; printf '%s' \"\$_out\"; sleep 60; done"
-            }
-        }
-        pane command="bash" name="Resources" size="30%" {
-            args "-c" "while true; do _out=\$(\"$esc_resource_monitor_script\" 2>/dev/null); clear; printf '%s' \"\$_out\"; sleep 5; done"
-        }
-    }
+    cat <<'FOOTER'
 }
 FOOTER
 }
