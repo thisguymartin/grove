@@ -85,8 +85,14 @@ do_install() {
 
     # 2. Clone or Update
     if [[ -d "$GROVE_DIR" ]]; then
-        info "Grove already exists at $GROVE_DIR. Updating..."
-        git -C "$GROVE_DIR" pull --ff-only || warn "Failed to pull latest changes."
+        if [[ "${FORCE:-false}" == "true" ]]; then
+            info "Force updating Grove at $GROVE_DIR..."
+            git -C "$GROVE_DIR" fetch origin
+            git -C "$GROVE_DIR" reset --hard origin/main
+        else
+            info "Grove already exists at $GROVE_DIR. Updating..."
+            git -C "$GROVE_DIR" pull --ff-only || warn "Failed to pull latest changes."
+        fi
     else
         info "Cloning Grove repository..."
         mkdir -p "$(dirname "$GROVE_DIR")"
@@ -193,16 +199,27 @@ do_uninstall() {
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
-# Handle --uninstall or -u
-if [[ "${1:-}" == "--uninstall" ]] || [[ "${1:-}" == "-u" ]]; then
+# Parse flags
+FORCE=false
+ACTION="install"
+for arg in "$@"; do
+    case "$arg" in
+        --force|-f) FORCE=true ;;
+        --uninstall|-u) ACTION="uninstall" ;;
+        --help|-h) ACTION="help" ;;
+    esac
+done
+
+if [[ "$ACTION" == "uninstall" ]]; then
     do_uninstall
-elif [[ "${1:-}" == "--help" ]] || [[ "${1:-}" == "-h" ]]; then
+elif [[ "$ACTION" == "help" ]]; then
     echo "Grove Installer"
     echo ""
     echo "Usage:"
     echo "  install.sh [options]"
     echo ""
     echo "Options:"
+    echo "  -f, --force        Force update, discarding local changes"
     echo "  -u, --uninstall    Remove Grove and its shell integrations"
     echo "  -h, --help         Show this help message"
     echo ""
