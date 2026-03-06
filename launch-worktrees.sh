@@ -24,7 +24,7 @@
 # Optional:     lazygit (falls back to a plain shell if not installed)
 #
 # Attach to an existing session later with:
-#   zellij attach git-worktrees
+#   zellij attach grove-<reponame>
 
 set -euo pipefail
 
@@ -33,7 +33,7 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 REPO_PATH=""
 LAYOUT_ONLY=false
-SESSION_NAME="git-worktrees"
+SESSION_NAME=""  # set after REPO_PATH is resolved below
 AI_EDITOR="${AI_EDITOR:-claude}"
 
 # Tab color palette — cycles through these for each worktree tab
@@ -79,6 +79,8 @@ fi
 
 # Resolve to the actual top-level so relative paths work
 REPO_PATH=$(git -C "$REPO_PATH" rev-parse --show-toplevel)
+REPO_NAME="$(basename "$REPO_PATH")"
+SESSION_NAME="grove-${REPO_NAME}"
 
 if ! command -v zellij &>/dev/null && ! $LAYOUT_ONLY; then
     echo "Error: zellij is required. Install from https://zellij.dev"

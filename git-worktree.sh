@@ -74,10 +74,21 @@ cmd_new() {
 
 cmd_rm() {
     local branch="${1:?Usage: git-worktree.sh rm <branch>}"
-    local target="${WORKTREE_DIR}/${branch}"
+
+    # Find the worktree path from git's own registry by branch name
+    local target
+    target=$(git worktree list --porcelain | awk '
+        /^worktree / { path=$2 }
+        /^branch refs\/heads\// { b=substr($2,length("refs/heads/")+1); if (b==branch) print path }
+    ' branch="$branch")
+
+    # Fallback: check the conventional location
+    if [[ -z "$target" ]]; then
+        target="${WORKTREE_DIR}/${branch}"
+    fi
 
     if [[ ! -d "$target" ]]; then
-        echo "No worktree found at $target"
+        echo "No worktree found for branch '$branch'"
         exit 1
     fi
 
@@ -245,7 +256,7 @@ cmd_tab() {
     trap 'rm -f "'"$layout_file"'"' EXIT
     echo "$layout" > "$layout_file"
 
-    local session_name="worktrees-${REPO_NAME}"
+    local session_name="grove-${REPO_NAME}"
 
     echo "Launching Zellij with ${#wt_paths[@]} worktree tab(s)..."
     for i in "${!wt_paths[@]}"; do
