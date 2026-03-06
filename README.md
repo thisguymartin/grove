@@ -14,12 +14,12 @@ Grove is a thin shell layer on top of tools you already use — git worktrees, Z
 
 2. **`grove`** — discovers all worktrees in the current repo and generates a Zellij layout on the fly. Each worktree becomes a tab.
 
-3. **Each tab** gets three panes:
-   - **Left (70%):** LazyGit scoped to that worktree's directory
-   - **Right (70%):** Your AI agent (`claude`, `gemini`, or `opencode`) in that worktree
-   - **Bottom (30%):** A plain shell — run tests, servers, whatever
+3. **Each tab** gets three side-by-side panes:
+   - **Left (60%):** LazyGit scoped to that worktree's directory
+   - **Middle (~12%):** A Workbench shell — run tests, servers, whatever
+   - **Right (~28%):** Your AI agent (`claude`, `gemini`, or `opencode`) in that worktree
 
-4. **Overview tab** — a final `Ovr` tab shows a live git status dashboard across all worktrees at a glance.
+4. **Overview tab** — the first tab shows a live dashboard with worktree status, AI agent status, PR/CI status, and resource monitoring across all worktrees.
 
 5. **Session hygiene** — `grove` auto-kills any previous session with the same name before launching, and sessions quit when you close the terminal. No stale Zellij sessions accumulating.
 
@@ -33,7 +33,7 @@ The workflow: create worktrees with `wtab`/`wta`, run `grove`, and navigate betw
 bash <(curl -s https://raw.githubusercontent.com/thisguymartin/grove/main/install/install.sh)
 ```
 
-This will clone the repo, install brew dependencies, and wire up your shell aliases automatically. It detects your shell (zsh/bash) and is idempotent — safe to run multiple times.
+This will clone the repo, install brew dependencies, and wire up your shell aliases automatically. It detects your shell (zsh/bash) and is safe to run multiple times — re-running always does a clean reinstall (force-deletes the existing install, kills Grove Zellij sessions, and re-clones).
 
 To install to a custom directory:
 
@@ -74,7 +74,7 @@ This will:
 
 1. Discover all git worktrees in your current repo
 2. Auto-kill any previous session with the same name
-3. Launch Zellij with **one color-coded tab per worktree** + an Overview tab
+3. Launch Zellij with an **Overview tab** (first) + **one color-coded tab per worktree**
 
 Sessions auto-quit when you close the terminal — no stale sessions.
 
@@ -184,7 +184,7 @@ zellij kill-session <name> # Kill a specific session
 
 ## Tab Colors
 
-Each worktree tab cycles through **15 visually distinct colors** (green, blue, yellow, magenta, orange, red, pink, sky blue, lime, purple, sandy gold, coral, teal, steel blue, dark orange). The Overview tab is always **cyan** (reserved, not in the cycling palette). Colors repeat if you have more than 15 worktrees.
+Each worktree tab cycles through **4 colors** (green, blue, yellow, orange). The Overview tab is always **cyan** (reserved, not in the cycling palette). Colors repeat if you have more than 4 worktrees. The main branch tab is auto-focused on launch.
 
 ## Worktree Directory Structure
 

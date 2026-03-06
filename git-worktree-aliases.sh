@@ -35,27 +35,11 @@ fi
 # Usage: wta <existing-branch>
 # ---------------------------------------------------------------------------
 wta() {
-    if [[ -z "$1" ]]; then
+    if [[ -z "${1:-}" ]]; then
         echo "Usage: wta <existing-branch>"
         return 1
     fi
-    local branch="$1"
-    local cur_git_dir proj_dir repo_name target
-    cur_git_dir=$(git rev-parse --show-toplevel 2>/dev/null) || {
-        echo "Error: not inside a git repository"
-        return 1
-    }
-    proj_dir=$(dirname "$cur_git_dir")
-    repo_name=$(basename "$cur_git_dir")
-    target="$proj_dir/worktrees/$repo_name/$branch"
-
-    if [ -d "$target" ]; then
-        echo "Worktree already exists at: $target"
-    else
-        echo "Adding worktree for branch '$branch' at: $target"
-        git worktree add "$target" "$branch"
-        echo "Done. cd into it with: cd $target"
-    fi
+    bash "$GROVE_INSTALL_DIR/git-worktree.sh" add "$1"
 }
 
 # ---------------------------------------------------------------------------
@@ -63,27 +47,11 @@ wta() {
 # Usage: wtab <new-branch-name>
 # ---------------------------------------------------------------------------
 wtab() {
-    if [[ -z "$1" ]]; then
+    if [[ -z "${1:-}" ]]; then
         echo "Usage: wtab <new-branch-name>"
         return 1
     fi
-    local branch="$1"
-    local cur_git_dir proj_dir repo_name target
-    cur_git_dir=$(git rev-parse --show-toplevel 2>/dev/null) || {
-        echo "Error: not inside a git repository"
-        return 1
-    }
-    proj_dir=$(dirname "$cur_git_dir")
-    repo_name=$(basename "$cur_git_dir")
-    target="$proj_dir/worktrees/$repo_name/$branch"
-
-    if [ -d "$target" ]; then
-        echo "Worktree already exists at: $target"
-    else
-        echo "Creating new branch '$branch' with worktree at: $target"
-        git worktree add "$target" -b "$branch"
-        echo "Done. cd into it with: cd $target"
-    fi
+    bash "$GROVE_INSTALL_DIR/git-worktree.sh" new "$1"
 }
 
 # ---------------------------------------------------------------------------

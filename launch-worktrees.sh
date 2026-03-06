@@ -321,8 +321,12 @@ fi
 
 LAYOUT_FILE=$(mktemp /tmp/worktree-layout-XXXXXXXX)
 CONFIG_FILE=$(mktemp /tmp/worktree-config-XXXXXXXX)
-# Clean up temp files on exit (success or failure)
-trap 'rm -f "$LAYOUT_FILE" "$CONFIG_FILE"' EXIT
+# Clean up temp files and Zellij session on exit (success or failure)
+trap '
+    rm -f "$LAYOUT_FILE" "$CONFIG_FILE"
+    zellij kill-session "$SESSION_NAME" 2>/dev/null || true
+    zellij delete-session "$SESSION_NAME" 2>/dev/null || true
+' EXIT
 
 echo "$LAYOUT_CONTENT" > "$LAYOUT_FILE"
 
@@ -347,13 +351,37 @@ if [[ -n "${ZELLIJ_SESSION_NAME:-}" ]]; then
     exit 1
 fi
 
-# Kill/delete existing session with the same name if it exists
-if zellij list-sessions 2>/dev/null | grep -qw "$SESSION_NAME"; then
-    echo "Cleaning up existing Zellij session: $SESSION_NAME"
-    zellij kill-session "$SESSION_NAME" 2>/dev/null || true
-    zellij delete-session "$SESSION_NAME" 2>/dev/null || true
-    sleep 0.5
-fi
+# ---------------------------------------------------------------------------
+# Session cleanup helper — reliably kill and delete a Zellij session
+# Usage: cleanup_zellij_session <session_name> <timeout_seconds>
+# ---------------------------------------------------------------------------
+cleanup_zellij_session() {
+    local session="$1"
+    local timeout="${2:-5}"
+
+    # Match session name at start of line regardless of trailing status like (EXITED)
+    if ! zellij list-sessions 2>/dev/null | grep -q "^${session}"; then
+        return 0
+    fi
+
+    echo "Cleaning up existing Zellij session: $session"
+    zellij kill-session "$session" 2>/dev/null || true
+    zellij delete-session "$session" 2>/dev/null || true
+
+    # Poll until session is gone or timeout
+    local elapsed=0
+    while zellij list-sessions 2>/dev/null | grep -q "^${session}"; do
+        if (( elapsed >= timeout )); then
+            echo "Warning: session '$session' still present after ${timeout}s, force deleting..."
+            zellij delete-session "$session" --force 2>/dev/null || true
+            break
+        fi
+        sleep 0.5
+        elapsed=$((elapsed + 1))
+    done
+}
+
+cleanup_zellij_session "$SESSION_NAME" 5
 
 echo "Launching Zellij workspace: $SESSION_NAME"
 echo ""
@@ -367,4 +395,5 @@ echo ""
 echo "Attach later with: zellij attach $SESSION_NAME"
 echo ""
 
+export AI_EDITOR
 zellij --config "$CONFIG_FILE" --new-session-with-layout "$LAYOUT_FILE" --session "$SESSION_NAME"
