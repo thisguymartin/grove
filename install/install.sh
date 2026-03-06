@@ -69,7 +69,21 @@ do_install() {
 
     check_prereqs
 
-    # 1. Clone or Update
+    # 1. Kill existing Grove Zellij sessions
+    if command -v zellij &>/dev/null; then
+        local grove_sessions
+        grove_sessions=$(zellij list-sessions 2>/dev/null | grep -o 'grove-[^ ]*' || true)
+        if [[ -n "$grove_sessions" ]]; then
+            info "Killing existing Grove Zellij sessions..."
+            while IFS= read -r session; do
+                zellij kill-session "$session" 2>/dev/null || true
+                zellij delete-session "$session" 2>/dev/null || true
+                success "Removed session: $session"
+            done <<< "$grove_sessions"
+        fi
+    fi
+
+    # 2. Clone or Update
     if [[ -d "$GROVE_DIR" ]]; then
         info "Grove already exists at $GROVE_DIR. Updating..."
         git -C "$GROVE_DIR" pull --ff-only || warn "Failed to pull latest changes."
@@ -79,13 +93,13 @@ do_install() {
         git clone "$REPO_URL" "$GROVE_DIR"
     fi
 
-    # 2. Install Dependencies
+    # 3. Install Dependencies
     if command -v brew &>/dev/null; then
         info "Installing dependencies via Homebrew..."
         brew bundle --file="$GROVE_DIR/brewfile" || warn "Brew bundle failed. You may need to install dependencies manually."
     fi
 
-    # 3. Wire up shell aliases
+    # 4. Wire up shell aliases
     local source_line="source $GROVE_DIR/git-worktree-aliases.sh"
     if grep -qF "$source_line" "$rc_file" 2>/dev/null; then
         success "Shell integration already present in $rc_file"
@@ -97,7 +111,7 @@ do_install() {
         success "Added aliases to $rc_file"
     fi
 
-    # 4. Optional 'gwt' alias
+    # 5. Optional 'gwt' alias
     local gwt_alias="alias gwt='$GROVE_DIR/git-worktree.sh'"
     if ! grep -qF "$gwt_alias" "$rc_file" 2>/dev/null; then
         echo ""
@@ -128,7 +142,21 @@ do_uninstall() {
 
     echo "${BOLD}${YELLOW}🗑  Uninstalling Grove...${RESET}"
     
-    # 1. Remove from shell RC
+    # 1. Kill all Grove Zellij sessions
+    if command -v zellij &>/dev/null; then
+        local grove_sessions
+        grove_sessions=$(zellij list-sessions 2>/dev/null | grep -o 'grove-[^ ]*' || true)
+        if [[ -n "$grove_sessions" ]]; then
+            info "Killing Grove Zellij sessions..."
+            while IFS= read -r session; do
+                zellij kill-session "$session" 2>/dev/null || true
+                zellij delete-session "$session" 2>/dev/null || true
+                success "Removed session: $session"
+            done <<< "$grove_sessions"
+        fi
+    fi
+
+    # 2. Remove from shell RC
     if [[ -f "$rc_file" ]]; then
         info "Removing Grove integration from $rc_file..."
         # Create a backup
@@ -144,7 +172,7 @@ do_uninstall() {
         success "Removed Grove lines from $rc_file (backup saved to ${rc_file}.bak)"
     fi
 
-    # 2. Remove directory
+    # 3. Remove directory
     if [[ -d "$GROVE_DIR" ]]; then
         read -p "   Do you want to delete the Grove directory at $GROVE_DIR? [y/N] " -n 1 -r
         echo ""

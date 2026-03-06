@@ -52,7 +52,9 @@ while [[ $# -gt 0 ]]; do
         --layout-only) LAYOUT_ONLY=true; shift ;;
         --kill-all)
             echo "Killing all Zellij sessions..."
-            zellij kill-all-sessions 2>/dev/null || echo "No active sessions."
+            zellij kill-all-sessions 2>/dev/null || true
+            zellij delete-all-sessions 2>/dev/null || true
+            echo "Done."
             shift
             ;;
         --ai)
@@ -225,33 +227,38 @@ HEADER
 
         echo "    tab name=\"${tab_dot} ${esc_name}\" color=\"$tab_color\" {"
 
-        # TOP (70%): LazyGit + AI Agent side by side
-        echo "        pane split_direction=\"vertical\" size=\"70%\" {"
+        # LEFT/RIGHT split: LazyGit (30%) | Right column (70%)
+        echo "        pane split_direction=\"vertical\" {"
 
         # Left: lazygit (or plain shell if lazygit not installed)
         if $HAS_LAZYGIT; then
-            echo "            pane command=\"lazygit\" name=\"LazyGit\" {"
+            echo "            pane command=\"lazygit\" name=\"LazyGit\" size=\"30%\" {"
             echo "                cwd \"$esc_path\""
             echo "            }"
         else
-            echo "            pane name=\"git: $esc_name\" {"
+            echo "            pane name=\"git: $esc_name\" size=\"30%\" {"
             echo "                cwd \"$esc_path\""
             echo "            }"
         fi
 
-        # Right: AI Agent
-        echo "            pane command=\"$esc_ai\" name=\"AI Agent\" {"
-        echo "                cwd \"$esc_path\""
+        # Right: Workbench (top) + AI Agent (bottom)
+        echo "            pane split_direction=\"horizontal\" size=\"70%\" {"
+
+        # Top: Workbench shell
+        echo "                pane name=\"Workbench\" size=\"70%\" {"
+        echo "                    cwd \"$esc_path\""
+        echo "                }"
+
+        # Bottom: AI Agent
+        echo "                pane command=\"$esc_ai\" name=\"AI Agent\" size=\"30%\" {"
+        echo "                    cwd \"$esc_path\""
         if [[ "$i" -eq 0 ]]; then
-            echo "                focus true"
+            echo "                    focus true"
         fi
+        echo "                }"
+
         echo "            }"
 
-        echo "        }"
-
-        # BOTTOM (30%): Workbench shell
-        echo "        pane name=\"Workbench\" {"
-        echo "            cwd \"$esc_path\""
         echo "        }"
 
         echo "    }"
@@ -332,10 +339,11 @@ if [[ -n "${ZELLIJ_SESSION_NAME:-}" ]]; then
     exit 1
 fi
 
-# Kill existing session with the same name if it exists
+# Kill/delete existing session with the same name if it exists
 if zellij list-sessions 2>/dev/null | grep -qw "$SESSION_NAME"; then
-    echo "Killing existing Zellij session: $SESSION_NAME"
+    echo "Cleaning up existing Zellij session: $SESSION_NAME"
     zellij kill-session "$SESSION_NAME" 2>/dev/null || true
+    zellij delete-session "$SESSION_NAME" 2>/dev/null || true
     sleep 0.5
 fi
 

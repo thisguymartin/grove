@@ -36,36 +36,39 @@ layout {
     // Tab: main worktree
     // Replace cwd paths with your actual repo root
     tab name="main" color="green" {
-        // TOP: LazyGit + AI Agent side by side
-        pane split_direction="vertical" size="70%" {
-            pane command="lazygit" name="LazyGit" {
+        // LEFT: LazyGit (30%) | RIGHT: Workbench (top) + AI Agent (bottom)
+        pane split_direction="vertical" {
+            pane command="lazygit" name="LazyGit" size="30%" {
                 // cwd "~/projects/my-repo"
             }
-            pane command="claude" name="AI Agent" {
-                // cwd "~/projects/my-repo"
-                focus true
+            pane split_direction="horizontal" size="70%" {
+                pane name="Workbench" size="70%" {
+                    // cwd "~/projects/my-repo"
+                }
+                pane command="claude" name="AI Agent" size="30%" {
+                    // cwd "~/projects/my-repo"
+                    focus true
+                }
             }
-        }
-        // BOTTOM: Workbench shell
-        pane name="Workbench" {
-            // cwd "~/projects/my-repo"
         }
     }
 
     // Tab: example feature worktree
     // Duplicate this block for each additional worktree
     tab name="feature-branch" color="blue" {
-        pane split_direction="vertical" size="70%" {
-            pane command="lazygit" name="LazyGit" {
+        pane split_direction="vertical" {
+            pane command="lazygit" name="LazyGit" size="30%" {
                 // cwd "~/projects/worktrees/my-repo/feature-branch"
             }
-            pane command="claude" name="AI Agent" {
-                // cwd "~/projects/worktrees/my-repo/feature-branch"
-                focus true
+            pane split_direction="horizontal" size="70%" {
+                pane name="Workbench" size="70%" {
+                    // cwd "~/projects/worktrees/my-repo/feature-branch"
+                }
+                pane command="claude" name="AI Agent" size="30%" {
+                    // cwd "~/projects/worktrees/my-repo/feature-branch"
+                    focus true
+                }
             }
-        }
-        pane name="Workbench" {
-            // cwd "~/projects/worktrees/my-repo/feature-branch"
         }
     }
 

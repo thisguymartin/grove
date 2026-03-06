@@ -78,8 +78,8 @@ cmd_rm() {
     # Find the worktree path from git's own registry by branch name
     local target
     target=$(git worktree list --porcelain | awk '
-        /^worktree / { path=$2 }
-        /^branch refs\/heads\// { b=substr($2,length("refs/heads/")+1); if (b==branch) print path }
+        /^worktree / { path=substr($0, 10) }
+        /^branch refs\/heads\// { b=substr($0, 8); sub(/^refs\/heads\//, "", b); if (b==branch) print path }
     ' branch="$branch")
 
     # Fallback: check the conventional location
@@ -109,8 +109,8 @@ cmd_ls() {
     echo "Git Worktrees for ${REPO_NAME}:"
     echo "─────────────────────────────────────────"
     git worktree list --porcelain | awk '
-        $1 == "worktree" { wt = $2 }
-        $1 == "branch"   { br = $2; sub(/^refs\/heads\//, "", br) }
+        /^worktree / { wt = substr($0, 10) }
+        /^branch /   { br = substr($0, 8); sub(/^refs\/heads\//, "", br) }
         $1 == "HEAD"     { head = $2 }
         $1 == "detached" { br = "(detached)" }
         $1 == "locked"   { locked = " [locked]" }
@@ -139,22 +139,7 @@ cmd_prune() {
 
     local pruned=0
 
-    git worktree list --porcelain | awk '
-        $1 == "worktree" { wt = $2 }
-        $1 == "branch"   { br = $2; sub(/^refs\/heads\//, "", br) }
-        $1 == "locked"   { locked = 1 }
-        /^$/ {
-            if (wt != "" && locked != 1) {
-                print wt "\t" br
-            }
-            wt = br = ""; locked = 0
-        }
-        END {
-            if (wt != "" && locked != 1) {
-                print wt "\t" br
-            }
-        }
-    ' | while IFS=$'\t' read -r wt br; do
+    while IFS=$'\t' read -r wt br; do
         # Skip the main worktree
         if [[ "$wt" == "$REPO_ROOT" ]]; then
             continue
@@ -200,7 +185,22 @@ cmd_prune() {
                 pruned=$((pruned + 1))
             fi
         fi
-    done
+    done < <(git worktree list --porcelain | awk '
+        /^worktree / { wt = substr($0, 10) }
+        /^branch /   { br = substr($0, 8); sub(/^refs\/heads\//, "", br) }
+        /^locked/    { locked = 1 }
+        /^$/ {
+            if (wt != "" && locked != 1) {
+                print wt "\t" br
+            }
+            wt = br = ""; locked = 0
+        }
+        END {
+            if (wt != "" && locked != 1) {
+                print wt "\t" br
+            }
+        }
+    ')
 
     if [[ "$pruned" -eq 0 ]]; then
         echo "  Nothing to prune."
@@ -224,8 +224,8 @@ cmd_tab() {
         wt_branches+=("$br")
     done < <(
         git worktree list --porcelain | awk '
-            $1 == "worktree" { wt = $2 }
-            $1 == "branch"   { br = $2; sub(/^refs\/heads\//, "", br) }
+            /^worktree / { wt = substr($0, 10) }
+            /^branch /   { br = substr($0, 8); sub(/^refs\/heads\//, "", br) }
             $1 == "detached" { br = "(detached)" }
             /^$/ {
                 if (wt != "") print wt "\t" br
@@ -276,10 +276,11 @@ cmd_tab() {
         exit 1
     fi
 
-    # Kill existing session with the same name if it exists
+    # Kill/delete existing session with the same name if it exists
     if zellij list-sessions 2>/dev/null | grep -qw "$session_name"; then
-        echo "Killing existing Zellij session: $session_name"
+        echo "Cleaning up existing Zellij session: $session_name"
         zellij kill-session "$session_name" 2>/dev/null || true
+        zellij delete-session "$session_name" 2>/dev/null || true
         sleep 0.5
     fi
 

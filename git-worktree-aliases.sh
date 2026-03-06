@@ -400,6 +400,12 @@ grove() {
         return 1
     fi
 
+    # Pass wt/worktree subcommands through with all remaining args
+    if [[ "${1:-}" == "wt" || "${1:-}" == "worktree" ]]; then
+        bash "$launcher" "$@"
+        return
+    fi
+
     local repo_path="" ai_editor=""
 
     # If first arg is a directory, treat as repo path
@@ -428,5 +434,7 @@ grove() {
 # ---------------------------------------------------------------------------
 zj-kill() {
     echo "Killing all Zellij sessions..."
-    zellij kill-all-sessions 2>/dev/null || echo "No active sessions."
+    zellij kill-all-sessions 2>/dev/null || true
+    zellij delete-all-sessions 2>/dev/null || true
+    echo "Done."
 }
