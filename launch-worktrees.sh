@@ -7,9 +7,8 @@
 #   ./launch-worktrees.sh --layout-only    # Print KDL to stdout (no launch)
 #
 # Each worktree gets its own Zellij tab containing:
-#   Left:  lazygit focused on that worktree
-#   Right: AI Agent (Claude Code / OpenCode)
-#   Bottom: Workbench shell
+#   Left:  lazygit focused on that worktree (60%)
+#   Right: Workbench shell (top 40%) + AI Agent (bottom 60%) — 40% total width
 #
 # A top tab-bar shows all worktree tabs for easy navigation.
 # A final "Overview" tab shows live git status across all worktrees.
@@ -37,15 +36,11 @@ SESSION_NAME=""  # set after REPO_PATH is resolved below
 AI_EDITOR="${AI_EDITOR:-claude}"
 
 # Tab color palette — cycles through these for each worktree tab
-# 15 visually distinct colors (cyan is reserved for the Overview tab)
-TAB_COLORS=(
-    "green" "blue" "yellow" "magenta" "orange" "red"
-    "#d75fd7" "#00afd7" "#5fd700" "#af87ff"
-    "#d7af5f" "#ff5f87" "#00d7af" "#5f87d7" "#d78700"
-)
+# Tab colors — cycles through these (cyan is reserved for the Overview tab)
+TAB_COLORS=("green" "blue" "yellow" "orange")
 
-# Colored dot emoji per tab — visible even when Zellij dims inactive tabs
-TAB_DOTS=("🟢" "🔵" "🟡" "🟣" "🟠" "🔴" "🔶" "🔷" "⚪" "⚫" "🟤" "🟥" "🩶" "🟦" "🟧")
+# Colored dot emoji per tab — matches TAB_COLORS cycle
+TAB_DOTS=("🟢" "🔵" "🟡" "🟠")
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -225,32 +220,36 @@ HEADER
         local dot_index=$((i % ${#TAB_DOTS[@]}))
         local tab_dot="${TAB_DOTS[$dot_index]}"
 
-        echo "    tab name=\"${tab_dot} ${esc_name}\" color=\"$tab_color\" {"
+        # Add bot emoji to non-main worktree tabs
+        local tab_prefix="${tab_dot}"
+        if [[ "$i" -gt 0 ]]; then
+            tab_prefix="${tab_dot} 🤖"
+        fi
 
-        # LEFT/RIGHT split: LazyGit (30%) | Right column (70%)
+        echo "    tab name=\"${tab_prefix} ${esc_name}\" color=\"$tab_color\" {"
+
+        # LEFT/RIGHT split: LazyGit (60%) | Right column (40%)
         echo "        pane split_direction=\"vertical\" {"
 
         # Left: lazygit (or plain shell if lazygit not installed)
         if $HAS_LAZYGIT; then
-            echo "            pane command=\"lazygit\" name=\"LazyGit\" size=\"30%\" {"
+            echo "            pane command=\"lazygit\" name=\"LazyGit\" size=\"60%\" {"
             echo "                cwd \"$esc_path\""
             echo "            }"
         else
-            echo "            pane name=\"git: $esc_name\" size=\"30%\" {"
+            echo "            pane name=\"git: $esc_name\" size=\"60%\" {"
             echo "                cwd \"$esc_path\""
             echo "            }"
         fi
 
-        # Right: Workbench (top) + AI Agent (bottom)
-        echo "            pane split_direction=\"horizontal\" size=\"70%\" {"
+        # Right: Workbench (top 40%) + AI Agent (bottom 60%)
+        echo "            pane split_direction=\"horizontal\" size=\"40%\" {"
 
-        # Top: Workbench shell
-        echo "                pane name=\"Workbench\" size=\"70%\" {"
+        echo "                pane name=\"Workbench\" size=\"40%\" {"
         echo "                    cwd \"$esc_path\""
         echo "                }"
 
-        # Bottom: AI Agent
-        echo "                pane command=\"$esc_ai\" name=\"AI Agent\" size=\"30%\" {"
+        echo "                pane command=\"$esc_ai\" name=\"AI Agent\" size=\"60%\" {"
         echo "                    cwd \"$esc_path\""
         if [[ "$i" -eq 0 ]]; then
             echo "                    focus true"

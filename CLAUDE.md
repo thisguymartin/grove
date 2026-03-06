@@ -62,9 +62,9 @@ grove [path] [ai-editor] → launch-grove.sh [path] [ai-editor] → launch-workt
 3. Kills any existing session, launches new Zellij session
 
 ### Per-Worktree Tab Layout (3 panes)
-- **LazyGit** (70% width) — git UI focused on that worktree
-- **AI Agent** (30% width) — Claude/Gemini/OpenCode cwd'd to worktree
-- **Workbench Shell** (bottom 30% height) — for tests, servers, etc.
+- **LazyGit** (30% width, left) — git UI focused on that worktree
+- **Workbench Shell** (top-right, 70% height) — for tests, servers, etc.
+- **AI Agent** (bottom-right, 30% height) — Claude/Gemini/OpenCode cwd'd to worktree
 
 ### Overview Tab (Cyan) — 4 panes
 - `worktree-status.sh` (top-left 40%) — live worktree status, refreshes every 15s

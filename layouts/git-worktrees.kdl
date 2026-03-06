@@ -11,8 +11,8 @@
 //   [ main ] [ feature-auth ] [ fix-login ] [ Overview ]
 //      |            |               |              |
 //   lazygit      lazygit         lazygit       live status
-//   + AI agent   + AI agent      + AI agent    dashboard
-//   + workbench  + workbench     + workbench
+//   + shell      + shell         + shell       dashboard
+//   + AI agent   + AI agent      + AI agent
 //
 // Tab-bar at top for navigation, status-bar at bottom.
 //
@@ -36,7 +36,7 @@ layout {
     // Tab: main worktree
     // Replace cwd paths with your actual repo root
     tab name="main" color="green" {
-        // LEFT: LazyGit (30%) | RIGHT: Workbench (top) + AI Agent (bottom)
+        // LEFT: LazyGit (30%) | RIGHT: Workbench (top 70%) + AI Agent (bottom 30%)
         pane split_direction="vertical" {
             pane command="lazygit" name="LazyGit" size="30%" {
                 // cwd "~/projects/my-repo"
