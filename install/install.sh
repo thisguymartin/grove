@@ -6,7 +6,7 @@
 #   bash install.sh --uninstall   # Remove Grove and shell integrations
 #   GROVE_DIR=~/my/path bash install.sh
 #
-# This script is idempotent and safe to run multiple times.
+# Re-running install always does a clean reinstall (force-deletes existing install).
 
 set -euo pipefail
 
@@ -83,21 +83,14 @@ do_install() {
         fi
     fi
 
-    # 2. Clone or Update
+    # 2. Clone (force-delete existing install for a clean slate)
     if [[ -d "$GROVE_DIR" ]]; then
-        if [[ "${FORCE:-false}" == "true" ]]; then
-            info "Force updating Grove at $GROVE_DIR..."
-            git -C "$GROVE_DIR" fetch origin
-            git -C "$GROVE_DIR" reset --hard origin/main
-        else
-            info "Grove already exists at $GROVE_DIR. Updating..."
-            git -C "$GROVE_DIR" pull --ff-only || warn "Failed to pull latest changes."
-        fi
-    else
-        info "Cloning Grove repository..."
-        mkdir -p "$(dirname "$GROVE_DIR")"
-        git clone "$REPO_URL" "$GROVE_DIR"
+        info "Removing existing Grove installation at $GROVE_DIR..."
+        rm -rf "$GROVE_DIR"
     fi
+    info "Cloning Grove repository..."
+    mkdir -p "$(dirname "$GROVE_DIR")"
+    git clone "$REPO_URL" "$GROVE_DIR"
 
     # 3. Install Dependencies
     if command -v brew &>/dev/null; then
@@ -200,11 +193,9 @@ do_uninstall() {
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 # Parse flags
-FORCE=false
 ACTION="install"
 for arg in "$@"; do
     case "$arg" in
-        --force|-f) FORCE=true ;;
         --uninstall|-u) ACTION="uninstall" ;;
         --help|-h) ACTION="help" ;;
     esac
@@ -219,7 +210,6 @@ elif [[ "$ACTION" == "help" ]]; then
     echo "  install.sh [options]"
     echo ""
     echo "Options:"
-    echo "  -f, --force        Force update, discarding local changes"
     echo "  -u, --uninstall    Remove Grove and its shell integrations"
     echo "  -h, --help         Show this help message"
     echo ""
