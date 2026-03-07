@@ -35,6 +35,7 @@ REPO_PATH=""
 LAYOUT_ONLY=false
 SESSION_NAME=""  # set after REPO_PATH is resolved below
 AI_EDITOR="${AI_EDITOR:-claude}"
+SKIP_PRUNE=false
 
 # Tab color palette — cycles through these for each worktree tab
 # Tab colors — cycles through these (cyan is reserved for the Overview tab)
@@ -57,6 +58,7 @@ while [[ $# -gt 0 ]]; do
             AI_EDITOR="${2:?--ai requires an editor name (e.g. claude, opencode)}"
             shift 2
             ;;
+        --skip-prune) SKIP_PRUNE=true; shift ;;
         --help|-h)
             grep '^#' "$0" | head -20 | sed 's/^# \{0,1\}//'
             exit 0
@@ -87,6 +89,32 @@ fi
 
 HAS_LAZYGIT=false
 command -v lazygit &>/dev/null && HAS_LAZYGIT=true
+
+# ---------------------------------------------------------------------------
+# Smart AI editor fallback
+# ---------------------------------------------------------------------------
+resolve_ai_editor() {
+    local requested="$1"
+    if command -v "$requested" &>/dev/null; then
+        echo "$requested"
+        return
+    fi
+
+    local fallback_order=("claude" "gemini" "opencode")
+    for candidate in "${fallback_order[@]}"; do
+        if [[ "$candidate" != "$requested" ]] && command -v "$candidate" &>/dev/null; then
+            echo -e "\033[33m$requested not found, falling back to $candidate\033[0m" >&2
+            echo "$candidate"
+            return
+        fi
+    done
+
+    # No AI agent found at all
+    echo -e "\033[33mNo AI agent found (tried: $requested, ${fallback_order[*]}). AI pane will open a shell.\033[0m" >&2
+    echo "bash"
+}
+
+AI_EDITOR=$(resolve_ai_editor "$AI_EDITOR")
 
 # ---------------------------------------------------------------------------
 # Parse git worktrees into parallel arrays
@@ -160,9 +188,79 @@ if ! $main_found; then
     WT_HEADS=("$main_head" "${WT_HEADS[@]}")
 fi
 
+# ---------------------------------------------------------------------------
+# Auto-prune merged worktree branches
+# ---------------------------------------------------------------------------
+if ! $SKIP_PRUNE && [[ ${#WT_PATHS[@]} -gt 1 ]]; then
+    # Detect default branch
+    prune_base=""
+    if git -C "$REPO_PATH" show-ref --verify --quiet refs/heads/main 2>/dev/null; then
+        prune_base="main"
+    elif git -C "$REPO_PATH" show-ref --verify --quiet refs/heads/master 2>/dev/null; then
+        prune_base="master"
+    fi
+
+    if [[ -n "$prune_base" ]]; then
+        merged_branches=$(git -C "$REPO_PATH" branch --merged "$prune_base" 2>/dev/null | grep -v "^\*" | sed 's/^  //' | grep -v "^${prune_base}$" || true)
+        merged_wts=()
+        merged_paths=()
+
+        for i in "${!WT_PATHS[@]}"; do
+            [[ "$i" -eq 0 ]] && continue  # skip main worktree
+            local_branch="${WT_BRANCHES[$i]#refs/heads/}"
+            if echo "$merged_branches" | grep -qx "$local_branch" 2>/dev/null; then
+                merged_wts+=("$local_branch")
+                merged_paths+=("${WT_PATHS[$i]}")
+            fi
+        done
+
+        if [[ ${#merged_wts[@]} -gt 0 ]]; then
+            echo -e "\033[33mFound ${#merged_wts[@]} worktree(s) with branches already merged into $prune_base:\033[0m"
+            for b in "${merged_wts[@]}"; do
+                echo "  - $b"
+            done
+            read -r -p "Prune these merged worktrees? [y/N] " answer
+            if [[ "$answer" =~ ^[Yy]$ ]]; then
+                for p in "${merged_paths[@]}"; do
+                    echo "  Removing $p"
+                    git -C "$REPO_PATH" worktree remove --force "$p" 2>/dev/null || true
+                done
+                # Re-parse worktrees after pruning
+                WT_PATHS=(); WT_BRANCHES=(); WT_HEADS=()
+                parse_worktrees
+                # Re-add main if needed
+                main_found=false
+                for p in "${WT_PATHS[@]}"; do
+                    [[ "$p" == "$REPO_PATH" ]] && main_found=true && break
+                done
+                if ! $main_found; then
+                    WT_PATHS=("$REPO_PATH" "${WT_PATHS[@]}")
+                    WT_BRANCHES=("refs/heads/$prune_base" "${WT_BRANCHES[@]}")
+                    main_head=$(git -C "$REPO_PATH" rev-parse HEAD 2>/dev/null || echo "")
+                    WT_HEADS=("$main_head" "${WT_HEADS[@]}")
+                fi
+            fi
+        fi
+    fi
+fi
+
 if [[ ${#WT_PATHS[@]} -eq 0 ]]; then
     echo "Error: no worktrees found in $REPO_PATH"
     exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# Mochi manifest detection
+# ---------------------------------------------------------------------------
+MOCHI_MANIFEST="$REPO_PATH/.mochi_manifest.json"
+HAS_MOCHI=false
+declare -A MOCHI_SLUGS  # branch → slug mapping for Mochi-managed worktrees
+
+if [[ -f "$MOCHI_MANIFEST" ]] && command -v jq &>/dev/null; then
+    HAS_MOCHI=true
+    while IFS='=' read -r branch slug; do
+        MOCHI_SLUGS["$branch"]="$slug"
+    done < <(jq -r 'to_entries[] | "\(.value.branch)=\(.key)"' "$MOCHI_MANIFEST" 2>/dev/null || true)
 fi
 
 # ---------------------------------------------------------------------------
@@ -177,6 +275,13 @@ tab_name() {
     else
         echo "${head:0:7}"
     fi
+}
+
+# Check if a worktree branch is managed by Mochi
+is_mochi_worktree() {
+    local branch="$1"
+    local short="${branch#refs/heads/}"
+    [[ -n "${MOCHI_SLUGS[$short]+x}" ]]
 }
 
 # Escape a string for embedding inside a KDL double-quoted string
@@ -217,6 +322,9 @@ HEADER
     local esc_resource_monitor_script
     esc_resource_monitor_script=$(kdl_escape "$script_dir/resource-monitor.sh")
 
+    local esc_mochi_status_script
+    esc_mochi_status_script=$(kdl_escape "$script_dir/mochi-status.sh")
+
     cat <<OVERVIEW
     // Overview tab — live project dashboards
     tab name="📊 Overview" color="cyan" {
@@ -231,12 +339,25 @@ HEADER
                 args "-c" "while true; do _out=\$(\"$esc_pr_status_script\" \"$esc_repo\" 2>/dev/null); clear; printf '%s' \"\$_out\"; sleep 60; done"
             }
         }
-        pane command="bash" name="Resources" size="30%" {
-            args "-c" "while true; do _out=\$(\"$esc_resource_monitor_script\" 2>/dev/null); clear; printf '%s' \"\$_out\"; sleep 5; done"
+        pane split_direction="horizontal" size="30%" {
+            pane command="bash" name="Resources" size="$($HAS_MOCHI && echo '50%' || echo '100%')" {
+                args "-c" "while true; do _out=\$(\"$esc_resource_monitor_script\" 2>/dev/null); clear; printf '%s' \"\$_out\"; sleep 5; done"
+            }
+OVERVIEW
+
+    if $HAS_MOCHI; then
+        cat <<MOCHI_PANE
+            pane command="bash" name="Mochi Tasks" size="50%" {
+                args "-c" "while true; do _out=\$(\"$esc_mochi_status_script\" \"$esc_repo\" 2>/dev/null); clear; printf '%s' \"\$_out\"; sleep 10; done"
+            }
+MOCHI_PANE
+    fi
+
+    cat <<OVERVIEW_CLOSE
         }
     }
 
-OVERVIEW
+OVERVIEW_CLOSE
 
     for i in "${!WT_PATHS[@]}"; do
         local path="${WT_PATHS[$i]}"
@@ -256,10 +377,13 @@ OVERVIEW
         local dot_index=$((i % ${#TAB_DOTS[@]}))
         local tab_dot="${TAB_DOTS[$dot_index]}"
 
-        # Add bot emoji to non-main worktree tabs
+        # Add bot emoji to non-main worktree tabs; [M] prefix for Mochi-managed
         local tab_prefix="${tab_dot}"
         if [[ "$i" -gt 0 ]]; then
             tab_prefix="${tab_dot} 🤖"
+        fi
+        if $HAS_MOCHI && is_mochi_worktree "$branch"; then
+            tab_prefix="[M] ${tab_prefix}"
         fi
 
         if [[ "$i" -eq 0 ]]; then
