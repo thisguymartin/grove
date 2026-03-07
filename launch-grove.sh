@@ -29,7 +29,8 @@ Options:
   -h, --help  Show this help message
 
 Examples:
-  grove                          Launch with Claude in current repo
+  grove                          Show this help message
+  grove .                        Launch with Claude in current repo
   grove gemini                   Launch with Gemini in current repo
   grove /path/to/repo            Launch with Claude in specified repo
   grove /path/to/repo opencode   Launch with OpenCode in specified repo
@@ -61,6 +62,11 @@ Environment Variables:
   AI_EDITOR          Default AI editor (default: claude)
 EOF
 }
+
+if [[ $# -eq 0 ]]; then
+    usage
+    exit 0
+fi
 
 REPO_PATH=""
 AI_EDITOR=""

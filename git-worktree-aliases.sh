@@ -351,9 +351,10 @@ wtui() {
 # ---------------------------------------------------------------------------
 # grove — launch the full AI-native workspace (God Mode)
 # Usage: grove [path] [ai-editor]
-#   grove                        # current dir, claude
+#   grove                        # show help
+#   grove .                      # current dir, claude
+#   grove claude                 # current dir, claude (explicit)
 #   grove gemini                 # current dir, gemini
-#   grove .                      # current dir (explicit), claude
 #   grove /path/to/repo          # specific dir, claude
 #   grove /path/to/repo gemini   # specific dir, gemini
 #
