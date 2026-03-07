@@ -76,7 +76,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         *)
             if [[ -d "$1" ]]; then
-                REPO_PATH="$1"
+                REPO_PATH="$(cd "$1" && pwd)"
+            elif [[ -f "$1" ]]; then
+                # File path given — use its parent directory (like VS Code)
+                REPO_PATH="$(cd "$(dirname "$1")" && pwd)"
             else
                 AI_EDITOR="$1"
             fi
