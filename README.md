@@ -12,7 +12,7 @@ Grove is a thin shell layer on top of tools you already use — git worktrees, Z
 
 1. **Worktrees** — each branch lives in its own directory on disk, so you can have `main`, `feature/auth`, and `fix-login` all checked out at the same time with no stashing.
 
-2. **`grove`** — discovers all worktrees in the current repo and generates a Zellij layout on the fly. Each worktree becomes a tab.
+2. **`grove .`** — discovers all worktrees in the current repo and generates a Zellij layout on the fly. Each worktree becomes a tab.
 
 3. **Each tab** gets three side-by-side panes:
    - **Left (60%):** LazyGit scoped to that worktree's directory
@@ -62,10 +62,10 @@ source ~/.zshrc
 `cd` into any git repo and run:
 
 ```bash
-grove                        # Launch workspace (default: claude)
-grove gemini                 # Use Gemini CLI instead
-grove opencode               # Use OpenCode instead
-grove .                      # Current dir (explicit), claude
+grove                        # Show help
+grove .                      # Launch workspace (current dir, claude)
+grove gemini                 # Current dir, Gemini CLI
+grove opencode               # Current dir, OpenCode
 grove /path/to/repo          # Specific repo dir, claude
 grove /path/to/repo gemini   # Specific repo dir, gemini
 ```
@@ -82,7 +82,8 @@ Sessions auto-quit when you close the terminal — no stale sessions.
 
 | Command               | Description                                                    |
 | :-------------------- | :------------------------------------------------------------- |
-| **`grove`**           | Launch workspace — colored tabs per worktree (default: claude) |
+| **`grove`**           | Show help                                                      |
+| **`grove .`**         | Launch workspace — colored tabs per worktree (default: claude) |
 | `grove opencode`      | Launch with OpenCode instead of Claude                         |
 | `grove gemini`        | Launch with Gemini CLI instead of Claude                       |
 | `grove /path`         | Launch workspace for a specific repo directory                 |
@@ -149,7 +150,7 @@ wta existing-branch        # worktree for existing remote branch
 wtls
 
 # Launch workspace with all worktrees as tabs
-grove
+grove .
 
 # Navigate tabs
 # Alt+Left/Right to switch between worktree tabs
