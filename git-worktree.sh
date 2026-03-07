@@ -38,6 +38,114 @@ ensure_worktree_dir() {
     fi
 }
 
+# ─── Zellij Integration ───────────────────────────────────────────────────────
+
+# Generate a standalone KDL layout for a single worktree tab
+# Usage: generate_single_tab_kdl <wt_path> <branch> <ai_editor>
+generate_single_tab_kdl() {
+    local wt_path="$1"
+    local branch="$2"
+    local ai_editor="${3:-claude}"
+
+    cat <<EOF
+layout {
+    default_tab_template {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        children
+        pane size=1 borderless=true {
+            plugin location="zellij:status-bar"
+        }
+    }
+
+    tab name="🤖 ${branch}" color="magenta" {
+        pane split_direction="vertical" {
+            pane command="lazygit" name="LazyGit" size="60%" {
+                cwd "${wt_path}"
+            }
+            pane split_direction="horizontal" size="40%" {
+                pane name="Workbench" size="40%" {
+                    cwd "${wt_path}"
+                }
+                pane command="${ai_editor}" name="AI Agent" size="60%" {
+                    cwd "${wt_path}"
+                    focus true
+                }
+            }
+        }
+    }
+}
+EOF
+}
+
+# Dynamically add a tab for the new worktree to a running Zellij session.
+# Works both inside a Zellij session and from an external terminal.
+# Usage: maybe_add_zellij_tab <wt_path> <branch>
+maybe_add_zellij_tab() {
+    local wt_path="$1"
+    local branch="$2"
+
+    # Determine target session: use current session if inside Zellij,
+    # otherwise look for the grove session for this repo.
+    local target_session="${ZELLIJ_SESSION_NAME:-}"
+
+    if [[ -z "$target_session" ]]; then
+        local grove_session="grove-${REPO_NAME}"
+        if zellij list-sessions 2>/dev/null | grep -q "^${grove_session}"; then
+            target_session="$grove_session"
+        else
+            return 0
+        fi
+    fi
+
+    local ai_editor="${AI_EDITOR:-claude}"
+    local layout_file
+    layout_file=$(mktemp /tmp/gwt-single-tab-XXXXXXXX.kdl)
+
+    generate_single_tab_kdl "$wt_path" "$branch" "$ai_editor" > "$layout_file"
+    echo "Adding Zellij tab for '$branch'..."
+
+    if [[ -n "${ZELLIJ_SESSION_NAME:-}" ]]; then
+        # Inside Zellij — use action directly
+        zellij action new-tab --layout "$layout_file" 2>/dev/null || {
+            echo "Warning: could not add Zellij tab."
+        }
+    else
+        # Outside Zellij — target the session by name
+        zellij --session "$target_session" action new-tab --layout "$layout_file" 2>/dev/null || {
+            echo "Warning: could not add Zellij tab to session '$target_session'."
+        }
+    fi
+    rm -f "$layout_file"
+}
+
+# Reliably kill and delete a Zellij session
+# Usage: cleanup_zellij_session <session_name> <timeout_seconds>
+cleanup_zellij_session() {
+    local session="$1"
+    local timeout="${2:-5}"
+
+    if ! zellij list-sessions 2>/dev/null | grep -q "^${session}"; then
+        return 0
+    fi
+
+    echo "Cleaning up existing Zellij session: $session"
+    zellij kill-session "$session" 2>/dev/null || true
+    zellij delete-session "$session" 2>/dev/null || true
+
+    local elapsed=0
+    while zellij list-sessions 2>/dev/null | grep -q "^${session}"; do
+        if (( elapsed >= timeout )); then
+            echo "Warning: session '$session' still present after ${timeout}s, force deleting..."
+            zellij delete-session "$session" --force 2>/dev/null || true
+            break
+        fi
+        sleep 0.5
+        elapsed=$((elapsed + 1))
+    done
+}
+
 # ─── Commands ─────────────────────────────────────────────────────────────────
 
 cmd_add() {
@@ -55,6 +163,7 @@ cmd_add() {
     git fetch origin "$branch" 2>/dev/null || true
     git worktree add "$target" "$branch"
     echo "Worktree added: $target (branch: $branch)"
+    maybe_add_zellij_tab "$target" "$branch"
 }
 
 cmd_new() {
@@ -70,6 +179,7 @@ cmd_new() {
 
     git worktree add "$target" -b "$branch"
     echo "Worktree created: $target (new branch: $branch)"
+    maybe_add_zellij_tab "$target" "$branch"
 }
 
 cmd_rm() {
@@ -276,13 +386,7 @@ cmd_tab() {
         exit 1
     fi
 
-    # Kill/delete existing session with the same name if it exists
-    if zellij list-sessions 2>/dev/null | grep -qw "$session_name"; then
-        echo "Cleaning up existing Zellij session: $session_name"
-        zellij kill-session "$session_name" 2>/dev/null || true
-        zellij delete-session "$session_name" 2>/dev/null || true
-        sleep 0.5
-    fi
+    cleanup_zellij_session "$session_name" 5
 
     zellij --new-session-with-layout "$layout_file" --session "$session_name"
 }
