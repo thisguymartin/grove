@@ -4,7 +4,8 @@ Grove is an AI-native terminal workspace for developers who work across multiple
 
 No config files to edit. No sessions to manage. Just `grove` and you're in.
 
-![Grove Terminal Layout](assets/terminal-pic.png)
+<img width="1918" height="973" alt="Screenshot 2026-03-09 at 9 33 50 AM" src="https://github.com/user-attachments/assets/facfcd25-08e5-4f51-b68c-757514ef767b" />
+
 
 ## How It Works
 
