@@ -42,6 +42,7 @@ detect_shell_rc() {
                 echo "$HOME/.bashrc"
             fi
             ;;
+        fish) echo "$HOME/.config/fish/config.fish" ;;
         *)    echo "$HOME/.profile" ;;
     esac
 }
@@ -99,14 +100,30 @@ do_install() {
     fi
 
     # 4. Wire up shell aliases
-    local source_line="source $GROVE_DIR/git-worktree-aliases.sh"
+    local shell_name
+    shell_name=$(basename "$SHELL")
+
+    local source_line aliases_file
+    if [[ "$shell_name" == "fish" ]]; then
+        aliases_file="$GROVE_DIR/git-worktree-aliases.fish"
+        source_line="source $aliases_file"
+    else
+        aliases_file="$GROVE_DIR/git-worktree-aliases.sh"
+        source_line="source $aliases_file"
+    fi
+
     if grep -qF "$source_line" "$rc_file" 2>/dev/null; then
         success "Shell integration already present in $rc_file"
     else
         info "Adding shell integration to $rc_file..."
         echo "" >> "$rc_file"
         echo "# Grove — git worktree workspace" >> "$rc_file"
-        echo "[[ -f \"$GROVE_DIR/git-worktree-aliases.sh\" ]] && $source_line" >> "$rc_file"
+        if [[ "$shell_name" == "fish" ]]; then
+            mkdir -p "$(dirname "$rc_file")"
+            echo "if test -f \"$aliases_file\"; $source_line; end" >> "$rc_file"
+        else
+            echo "[[ -f \"$aliases_file\" ]] && $source_line" >> "$rc_file"
+        fi
         success "Added aliases to $rc_file"
     fi
 
@@ -164,7 +181,9 @@ do_uninstall() {
         # Use a temporary file to filter out Grove lines
         # We look for the comment, the source line, or the gwt alias
         sed -i.tmp '/# Grove — git worktree workspace/d' "$rc_file"
-        sed -i.tmp "/source.*grove\/git-worktree-aliases.sh/d" "$rc_file"
+        sed -i.tmp "/source.*grove\/git-worktree-aliases\.sh/d" "$rc_file"
+        sed -i.tmp "/source.*grove\/git-worktree-aliases\.fish/d" "$rc_file"
+        sed -i.tmp "/if test -f.*grove\/git-worktree-aliases\.fish/d" "$rc_file"
         sed -i.tmp "/alias gwt=.*grove\/git-worktree.sh/d" "$rc_file"
         rm -f "${rc_file}.tmp"
         

@@ -33,19 +33,35 @@ The workflow: create worktrees with `wtab`/`wta`, run `grove`, and navigate betw
 
 ### Recommended: One-liner
 
+**bash / zsh:**
+
 ```bash
 bash <(curl -s https://raw.githubusercontent.com/thisguymartin/grove/main/install/install.sh)
 ```
 
-This will clone the repo, install brew dependencies, and wire up your shell aliases automatically. It detects your shell (zsh/bash) and is safe to run multiple times — re-running always does a clean reinstall (force-deletes the existing install, kills Grove Zellij sessions, and re-clones).
+**fish shell** (process substitution works differently in fish — download and run directly):
+
+```fish
+curl -s https://raw.githubusercontent.com/thisguymartin/grove/main/install/install.sh | bash
+```
+
+This will clone the repo, install brew dependencies, and wire up your shell aliases automatically. It detects your shell (zsh/bash/fish) and is safe to run multiple times — re-running always does a clean reinstall (force-deletes the existing install, kills Grove Zellij sessions, and re-clones).
 
 To install to a custom directory:
 
+**bash / zsh:**
 ```bash
 GROVE_DIR=~/my/path bash <(curl -s https://raw.githubusercontent.com/thisguymartin/grove/main/install/install.sh)
 ```
 
+**fish shell:**
+```fish
+GROVE_DIR=~/my/path curl -s https://raw.githubusercontent.com/thisguymartin/grove/main/install/install.sh | bash
+```
+
 ### Manual
+
+**bash / zsh:**
 
 ```bash
 # 1. Clone
@@ -59,6 +75,22 @@ echo 'source ~/.local/share/grove/git-worktree-aliases.sh' >> ~/.zshrc
 
 # 4. Reload
 source ~/.zshrc
+```
+
+**fish shell:**
+
+```fish
+# 1. Clone
+git clone https://github.com/thisguymartin/grove.git ~/.local/share/grove
+
+# 2. Install dependencies
+brew bundle --file=~/.local/share/grove/brewfile
+
+# 3. Add to ~/.config/fish/config.fish
+echo 'source ~/.local/share/grove/git-worktree-aliases.fish' >> ~/.config/fish/config.fish
+
+# 4. Reload
+source ~/.config/fish/config.fish
 ```
 
 ## Usage
