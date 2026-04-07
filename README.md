@@ -21,7 +21,7 @@ Grove is a thin shell layer on top of tools you already use — git worktrees, Z
 3. **Each tab** gets three side-by-side panes:
    - **Left (60%):** LazyGit scoped to that worktree's directory
    - **Middle (~12%):** A Workbench shell — run tests, servers, whatever
-   - **Right (~28%):** Your AI agent (`claude`, `gemini`, or `opencode`) in that worktree
+   - **Right (~28%):** Your AI agent (`claude`, `gemini`, `opencode`, or `codex`) in that worktree
 
 4. **Overview tab** — the first tab shows a live dashboard with worktree status, AI agent status, PR/CI status, and resource monitoring across all worktrees.
 
@@ -99,9 +99,10 @@ source ~/.config/fish/config.fish
 
 ```bash
 grove                        # Show help
-grove .                      # Launch workspace (current dir, claude)
+grove .                      # Launch workspace (current dir, opencode)
 grove gemini                 # Current dir, Gemini CLI
 grove opencode               # Current dir, OpenCode
+grove codex                  # Current dir, Codex
 grove /path/to/repo          # Specific repo dir, claude
 grove /path/to/repo gemini   # Specific repo dir, gemini
 ```
@@ -119,9 +120,10 @@ Sessions auto-quit when you close the terminal — no stale sessions.
 | Command               | Description                                                    |
 | :-------------------- | :------------------------------------------------------------- |
 | **`grove`**           | Show help                                                      |
-| **`grove .`**         | Launch workspace — colored tabs per worktree (default: claude) |
+| **`grove .`**         | Launch workspace — colored tabs per worktree (default: opencode) |
 | `grove opencode`      | Launch with OpenCode instead of Claude                         |
 | `grove gemini`        | Launch with Gemini CLI instead of Claude                       |
+| `grove codex`         | Launch with Codex instead of Claude                            |
 | `grove /path`         | Launch workspace for a specific repo directory                 |
 | `grove /path gemini`  | Launch for a specific repo with a specific AI editor           |
 | **`wtab <branch>`**   | Create a new branch + worktree                                 |
@@ -242,13 +244,13 @@ Worktrees are created under a sibling `worktrees/` directory:
 | :----------------- | :-------------------- | :----------------------------------------------------------------------- |
 | `GWT_BASE_BRANCH`  | `main`                | Base branch used by `prune` to detect merged branches                    |
 | `GWT_WORKTREE_DIR` | `../worktrees/<repo>` | Override the directory where worktrees are created                       |
-| `AI_EDITOR`        | `claude`              | AI editor launched in each worktree tab (`claude`, `gemini`, `opencode`) |
+| `AI_EDITOR`        | `opencode`            | AI editor launched in each worktree tab (`claude`, `gemini`, `opencode`, `codex`) |
 
 ## Requirements
 
 - [Zellij](https://zellij.dev) — terminal multiplexer
 - [LazyGit](https://github.com/jesseduffield/lazygit) — git TUI (optional, falls back to shell)
-- [Claude Code](https://claude.ai/claude-code), [Gemini CLI](https://github.com/google-gemini/gemini-cli), or [OpenCode](https://github.com/opencode-ai/opencode) — AI agent (optional)
+- [Claude Code](https://claude.ai/claude-code), [Gemini CLI](https://github.com/google-gemini/gemini-cli), [OpenCode](https://github.com/opencode-ai/opencode), or Codex CLI (`codex`) — AI agent (optional)
 
 ## Claude Code Integration
 

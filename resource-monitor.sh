@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # resource-monitor.sh — CPU/Memory monitor for AI agent and dev tool processes
 #
-# Shows resource usage for claude, gemini, opencode, and lazygit processes.
+# Shows resource usage for claude, gemini, opencode, codex, and lazygit processes.
 #
 # Designed to run in a loop: while true; do clear; ./resource-monitor.sh; sleep 5; done
 
@@ -20,7 +20,7 @@ echo ""
 
 # Collect all AI/dev tool processes
 proc_output=""
-for proc_name in claude gemini opencode lazygit; do
+for proc_name in claude gemini opencode codex lazygit; do
     matches=$(ps -eo pid,pcpu,pmem,rss,etime,comm 2>/dev/null \
         | grep -i "$proc_name" \
         | grep -v grep \

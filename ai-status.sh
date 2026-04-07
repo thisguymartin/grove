@@ -15,6 +15,7 @@ GREEN='\033[32m'
 YELLOW='\033[33m'
 CYAN='\033[36m'
 MAGENTA='\033[35m'
+BLUE='\033[34m'
 DIM='\033[2m'
 RED='\033[31m'
 RESET='\033[0m'
@@ -30,7 +31,7 @@ echo ""
 # ---------------------------------------------------------------------------
 echo -e "${BOLD}Active Agents${RESET}"
 agent_count=0
-for editor in claude gemini opencode; do
+for editor in claude gemini opencode codex; do
     active=$(pgrep -a -f "$editor" 2>/dev/null | grep -v grep | grep -v "ai-status" | grep -v "resource-monitor" || true)
     if [[ -z "$active" ]]; then
         continue
@@ -44,6 +45,7 @@ for editor in claude gemini opencode; do
             claude)   icon="${GREEN}●${RESET}"; label="Claude" ;;
             gemini)   icon="${YELLOW}●${RESET}"; label="Gemini" ;;
             opencode) icon="${MAGENTA}●${RESET}"; label="OpenCode" ;;
+            codex)    icon="${BLUE}●${RESET}"; label="Codex" ;;
         esac
         echo -e "  ${icon} ${BOLD}${project}${RESET} ${DIM}/${branch}${RESET}  ${DIM}[${label}] pid:${pid}${RESET}"
         agent_count=$((agent_count + 1))

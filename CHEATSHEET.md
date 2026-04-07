@@ -4,9 +4,10 @@
 | Command | Description |
 | :--- | :--- |
 | **`grove`** | **Show help** |
-| **`grove .`** | **Launch workspace** (current dir, claude) |
+| **`grove .`** | **Launch workspace** (current dir, opencode) |
 | `grove opencode` | Launch with OpenCode instead of Claude |
 | `grove gemini` | Launch with Gemini CLI instead of Claude |
+| `grove codex` | Launch with Codex instead of Claude |
 | `grove /path/to/repo` | Launch workspace for a specific repo directory |
 | `grove /path gemini` | Launch for a specific repo with a specific AI editor |
 | `zj-kill` | Kill all Zellij sessions (clean slate) |
@@ -38,7 +39,7 @@
 | Command | Description |
 | :--- | :--- |
 | `grove` | **Show help** |
-| `grove .` | **Launch** workspace — colored tabs per worktree (default: claude) |
+| `grove .` | **Launch** workspace — colored tabs per worktree (default: opencode) |
 | `wtab <branch>` | **Create** new branch + worktree |
 | `wta <branch>` | **Add** worktree for existing branch |
 | `wtls` | **List** all worktrees (`git worktree list`) |

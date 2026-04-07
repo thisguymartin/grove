@@ -45,7 +45,7 @@ ensure_worktree_dir() {
 generate_single_tab_kdl() {
     local wt_path="$1"
     local branch="$2"
-    local ai_editor="${3:-claude}"
+    local ai_editor="${3:-opencode}"
 
     cat <<EOF
 layout {
@@ -99,7 +99,7 @@ maybe_add_zellij_tab() {
         fi
     fi
 
-    local ai_editor="${AI_EDITOR:-claude}"
+    local ai_editor="${AI_EDITOR:-opencode}"
     local layout_file
     layout_file=$(mktemp /tmp/gwt-single-tab-XXXXXXXX.kdl)
 
@@ -423,8 +423,8 @@ layout {
     }
 HEADER
 
-    # AI editor (default: claude, override with AI_EDITOR env var)
-    local ai_editor="${AI_EDITOR:-claude}"
+    # AI editor (default: opencode, override with AI_EDITOR env var)
+    local ai_editor="${AI_EDITOR:-opencode}"
 
     # Tab color palette — cycles through these for each worktree tab
     # 15 visually distinct colors (cyan is reserved for the Overview tab)

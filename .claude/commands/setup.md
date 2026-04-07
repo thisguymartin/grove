@@ -35,9 +35,10 @@ If the user has the repo cloned locally for development:
 
 Navigate to any git repository, then:
 ```bash
-grove              # launch with Claude (default AI editor)
+grove              # launch with OpenCode (default AI editor)
 grove gemini       # launch with Gemini CLI
 grove opencode     # launch with OpenCode
+grove codex        # launch with Codex
 ```
 
 ## Worktree Commands (after sourcing aliases)

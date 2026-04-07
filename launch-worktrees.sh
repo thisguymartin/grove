@@ -15,7 +15,7 @@
 # A final "Overview" tab shows live git status across all worktrees.
 #
 # Options:
-#   --ai <editor>    AI editor command (default: claude, or set AI_EDITOR)
+#   --ai <editor>    AI editor command (default: opencode, or set AI_EDITOR)
 #
 # Tab names come from the branch name (strips "refs/heads/").
 # Detached HEADs use the short commit SHA as the tab name.
@@ -34,7 +34,7 @@ set -euo pipefail
 REPO_PATH=""
 LAYOUT_ONLY=false
 SESSION_NAME=""  # set after REPO_PATH is resolved below
-AI_EDITOR="${AI_EDITOR:-claude}"
+AI_EDITOR="${AI_EDITOR:-opencode}"
 
 # Tab color palette — cycles through these for each worktree tab
 # Tab colors — cycles through these (cyan is reserved for the Overview tab)
@@ -54,7 +54,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --ai)
-            AI_EDITOR="${2:?--ai requires an editor name (e.g. claude, opencode)}"
+            AI_EDITOR="${2:?--ai requires an editor name (e.g. claude, opencode, codex)}"
             shift 2
             ;;
         --help|-h)

@@ -352,10 +352,11 @@ wtui() {
 # grove — launch the full AI-native workspace (God Mode)
 # Usage: grove [path] [ai-editor]
 #   grove                        # show help
-#   grove .                      # current dir, claude
-#   grove claude                 # current dir, claude (explicit)
+#   grove .                      # current dir, opencode
+#   grove claude                 # current dir, claude (explicit override)
 #   grove gemini                 # current dir, gemini
-#   grove /path/to/repo          # specific dir, claude
+#   grove codex                  # current dir, codex
+#   grove /path/to/repo          # specific dir, opencode
 #   grove /path/to/repo gemini   # specific dir, gemini
 #
 # Works from any git repo. Launches Zellij with one tab per worktree,
