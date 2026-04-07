@@ -31,12 +31,19 @@ Arguments:
 Options:
   -h, --help  Show this help message
 
+Local Layout Testing:
+  bash launch-worktrees.sh --layout-only .
+  bash launch-worktrees.sh --write-layout /tmp/grove-layout.kdl .
+  zellij --layout /tmp/grove-layout.kdl
+
 Examples:
   grove                          Show this help message
   grove .                        Launch with OpenCode in current repo
+  grove claude                   Launch with Claude in current repo
   grove gemini                   Launch with Gemini in current repo
   grove codex                    Launch with Codex in current repo
   grove /path/to/repo            Launch with OpenCode in specified repo
+  grove /path/to/repo claude     Launch with Claude in specified repo
   grove /path/to/repo opencode   Launch with OpenCode in specified repo
 
 Worktree Commands (run from inside a git repo):
@@ -59,6 +66,7 @@ Shell Aliases (from git-worktree-aliases.sh):
   wtls            List worktrees
   wtp             Prune merged worktrees
   wtcd <branch>   cd into a worktree
+  wtco <branch>   alias for wtcd
 
 Environment Variables:
   GWT_BASE_BRANCH    Base branch for prune/diff (default: main)

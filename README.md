@@ -29,6 +29,8 @@ Grove is a thin shell layer on top of tools you already use — git worktrees, Z
 
 The workflow: create worktrees with `wtab`/`wta`, run `grove`, and navigate between branches with `Alt+Left/Right`. Clean up finished branches with `wtrm` or `wtp`.
 
+Architecture details: [`docs/architecture.md`](docs/architecture.md)
+
 ## Install
 
 ### Recommended: One-liner
@@ -98,14 +100,16 @@ source ~/.config/fish/config.fish
 `cd` into any git repo and run:
 
 ```bash
-grove                        # Show help
-grove .                      # Launch workspace (current dir, opencode)
-grove claude                 # Current dir, Claude CLI
-grove gemini                 # Current dir, Gemini CLI
-grove opencode               # Current dir, OpenCode
-grove codex                  # Current dir, Codex
-grove /path/to/repo          # Specific repo dir, claude
-grove /path/to/repo gemini   # Specific repo dir, gemini
+grove .
+```
+
+Full command reference: [`docs/commands.md`](docs/commands.md)
+
+To test the rendered Zellij layout locally without launching Grove directly:
+
+```bash
+bash ./launch-worktrees.sh --write-layout /tmp/grove-layout.kdl .
+zellij --layout /tmp/grove-layout.kdl
 ```
 
 This will:
@@ -118,64 +122,27 @@ Sessions auto-quit when you close the terminal — no stale sessions.
 
 ## Commands
 
-| Command               | Description                                                    |
-| :-------------------- | :------------------------------------------------------------- |
-| **`grove`**           | Show help                                                      |
-| **`grove .`**         | Launch workspace — colored tabs per worktree (default: opencode) |
-| `grove opencode`      | Launch with OpenCode instead of Claude                         |
-| `grove gemini`        | Launch with Gemini CLI instead of Claude                       |
-| `grove codex`         | Launch with Codex instead of Claude                            |
-| `grove /path`         | Launch workspace for a specific repo directory                 |
-| `grove /path gemini`  | Launch for a specific repo with a specific AI editor           |
-| **`wtab <branch>`**   | Create a new branch + worktree                                 |
-| **`wta <branch>`**    | Add worktree for an existing remote branch                     |
-| **`wtls`**            | List all worktrees                                             |
-| **`wtrm <path>`**     | Remove a worktree (force)                                      |
-| **`wtp [base]`**      | Prune worktrees merged/squash-merged/rebased into base branch  |
-| **`wtcd <branch>`**   | `cd` into a worktree by branch name                            |
-| **`wtinfo [branch]`** | Show path, HEAD, ahead/behind, dirty status for a worktree     |
-| **`wtdiff [branch]`** | `git diff --stat` between worktree branch and base branch      |
-| **`wtrn <old> <new>`**| Rename a worktree's branch                                     |
-| **`wtlock <path>`**   | Lock a worktree                                                |
-| **`wtunlock <path>`** | Unlock a worktree                                              |
-| `wtui [path]`         | Launch Zellij per-worktree tabs (without AI editor arg)        |
-| `wtstatus [path]`     | Live worktree status dashboard (standalone)                    |
-| **`zj-kill`**         | Kill all Zellij sessions (clean slate)                         |
+Core commands live in [`docs/commands.md`](docs/commands.md).
+
+Most-used commands:
+
+| Command | Description |
+| :------ | :---------- |
+| `grove .` | Launch workspace with `opencode` as the default AI editor |
+| `grove claude` | Launch workspace with Claude |
+| `grove codex` | Launch workspace with Codex |
+| `wtab <branch>` | Create a new branch + worktree |
+| `wta <branch>` | Add worktree for an existing branch |
+| `wtco <branch>` | Jump into a worktree directory |
+| `wtinfo [branch]` | Show worktree status and upstream info |
+| `wtp [base]` | Prune merged worktrees |
 
 ### Git Worktree Toolkit (`gwt`)
 
-A standalone script for worktree lifecycle management:
+A standalone script for worktree lifecycle management. See [`docs/commands.md`](docs/commands.md) for the full command list.
 
 ```bash
 alias gwt='~/.local/share/grove/git-worktree.sh'
-```
-
-| Command                       | Description                                  |
-| :---------------------------- | :------------------------------------------- |
-| `gwt new <branch>`            | Create a new branch and worktree             |
-| `gwt add <branch>`            | Add a worktree for an existing branch        |
-| `gwt rm <branch>`             | Remove a worktree (prompts to delete branch) |
-| `gwt ls`                      | List all worktrees                           |
-| `gwt prune`                   | Remove worktrees for merged/stale branches   |
-| `gwt tab`                     | Launch Zellij with one tab per worktree      |
-| `gwt cd <branch>`             | Print the worktree path for a branch         |
-| `gwt info [branch]`           | Show path, HEAD, ahead/behind, dirty status  |
-| `gwt diff [branch]`           | Diff between branch and base branch          |
-| `gwt rename <old> <new>`      | Rename a worktree's branch                   |
-| `gwt lock <path>`             | Lock a worktree                              |
-| `gwt unlock <path>`           | Unlock a worktree                            |
-
-### Git Config Aliases (optional)
-
-Add to your `~/.gitconfig` `[alias]` section:
-
-```gitconfig
-[alias]
-    wta  = "!f() { branch=$1; cur_git_dir=$(git rev-parse --show-toplevel); proj_dir=$(dirname \"$cur_git_dir\"); repo_name=$(basename \"$cur_git_dir\"); target=\"$proj_dir\"/worktrees/\"$repo_name\"/\"$branch\"; if [ ! -d $target ]; then git worktree add \"$target\"; fi; exit 0; }; f"
-    wtab = "!f() { branch=$1; cur_git_dir=$(git rev-parse --show-toplevel); proj_dir=$(dirname \"$cur_git_dir\"); repo_name=$(basename \"$cur_git_dir\"); target=\"$proj_dir\"/worktrees/\"$repo_name\"/\"$branch\"; if [ ! -d $target ]; then git worktree add \"$target\" -b \"$branch\"; fi; exit 0; }; f"
-    wtp  = "!f(){ set -eu; default_branch=$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null | sed 's@^origin/@@' || true); main_branch=${1:-${default_branch:-main}}; git fetch -p origin >/dev/null 2>&1 || true; git worktree prune; }; f"
-    wtls = worktree list
-    wtrm = worktree remove --force
 ```
 
 ## Worktree Lifecycle
@@ -196,7 +163,8 @@ grove .
 # Alt+Arrow Keys to move between panes
 
 # Inspect worktrees
-wtcd feature/auth          # cd into a worktree
+wtco feature/auth          # cd into a worktree
+wtcd feature/auth          # same as wtco
 wtinfo feature/auth        # show path, HEAD, ahead/behind, status
 wtdiff feature/auth        # diff vs base branch
 
@@ -222,30 +190,13 @@ zj-kill                    # Kill ALL Zellij sessions (nuclear option)
 zellij kill-session <name> # Kill a specific session
 ```
 
-## Tab Colors
+## Project Docs
 
-Each worktree tab cycles through **4 colors** (green, blue, yellow, orange). The Overview tab is always **cyan** (reserved, not in the cycling palette). Colors repeat if you have more than 4 worktrees. The main branch tab is auto-focused on launch.
+- [`docs/commands.md`](docs/commands.md): canonical command reference
+- [`docs/architecture.md`](docs/architecture.md): runtime flow, layout, and implementation structure
+- [`CHEATSHEET.md`](CHEATSHEET.md): quick reference and keybindings
 
-## Worktree Directory Structure
-
-Worktrees are created under a sibling `worktrees/` directory:
-
-```
-~/projects/
-  my-repo/              <- your main clone
-  worktrees/
-    my-repo/
-      feature/login/    <- worktree for feature/login branch
-      bugfix/header/    <- worktree for bugfix/header branch
-```
-
-## Environment Variables
-
-| Variable           | Default               | Description                                                              |
-| :----------------- | :-------------------- | :----------------------------------------------------------------------- |
-| `GWT_BASE_BRANCH`  | `main`                | Base branch used by `prune` to detect merged branches                    |
-| `GWT_WORKTREE_DIR` | `../worktrees/<repo>` | Override the directory where worktrees are created                       |
-| `AI_EDITOR`        | `opencode`            | AI editor launched in each worktree tab (`claude`, `gemini`, `opencode`, `codex`) |
+Note: `layouts/workspace.kdl.template` is an internal template rendered by Grove. It is not meant to be passed directly to `zellij --layout`.
 
 ## Requirements
 

@@ -1,0 +1,35 @@
+// Internal template consumed by launch-worktrees.sh.
+// This file is not a directly runnable Zellij layout because it contains
+// Grove placeholders like {{GROVE_INSTALL_DIR}}, {{REPO_PATH}}, and
+// // {{WORKTREE_TABS}}.
+
+layout {
+    default_tab_template {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        children
+        pane size=1 borderless=true {
+            plugin location="zellij:status-bar"
+        }
+    }
+    // Overview tab — live project dashboards
+    tab name="📊 Overview" color="cyan" cwd="{{GROVE_INSTALL_DIR}}" {
+        pane split_direction="vertical" size="70%" {
+            pane command="bash" name="Worktree Status" size="40%" {
+                args "-c" "while true; do _out=$(./worktree-status.sh \"{{REPO_PATH}}\" 2>/dev/null); clear; printf '%s' \"$_out\"; sleep 15; done"
+            }
+            pane command="bash" name="AI Status" size="30%" {
+                args "-c" "while true; do _out=$(./ai-status.sh 2>/dev/null); clear; printf '%s' \"$_out\"; sleep 30; done"
+            }
+            pane command="bash" name="PR Status" size="30%" {
+                args "-c" "while true; do _out=$(./pr-status.sh \"{{REPO_PATH}}\" 2>/dev/null); clear; printf '%s' \"$_out\"; sleep 60; done"
+            }
+        }
+        pane command="bash" name="Resources" size="30%" {
+            args "-c" "while true; do _out=$(./resource-monitor.sh 2>/dev/null); clear; printf '%s' \"$_out\"; sleep 5; done"
+        }
+    }
+
+    // {{WORKTREE_TABS}}
+}
