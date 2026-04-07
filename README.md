@@ -100,6 +100,7 @@ source ~/.config/fish/config.fish
 ```bash
 grove                        # Show help
 grove .                      # Launch workspace (current dir, opencode)
+grove claude                 # Current dir, Claude CLI
 grove gemini                 # Current dir, Gemini CLI
 grove opencode               # Current dir, OpenCode
 grove codex                  # Current dir, Codex

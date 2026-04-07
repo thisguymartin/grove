@@ -6,10 +6,12 @@
 #
 # Usage:
 #   ./launch-grove.sh                         # current dir, opencode
+#   ./launch-grove.sh claude                  # current dir, claude
 #   ./launch-grove.sh opencode                # current dir, opencode
 #   ./launch-grove.sh codex                   # current dir, codex
 #   ./launch-grove.sh /path/to/repo           # specific dir, opencode
-#   ./launch-grove.sh /path/to/repo gemini    # specific dir, gemini
+#   ./launch-grove.sh /path/to/repo claude    # specific dir, claude
+#   ./launch-grove.sh /path/to/repo codex     # specific dir, codex
 
 set -euo pipefail
 
