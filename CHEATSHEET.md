@@ -1,12 +1,17 @@
 # Grove Cheatsheet
 
 ## Daily Workflow
+
+Full command reference: [`docs/commands.md`](docs/commands.md)
+
 | Command | Description |
 | :--- | :--- |
 | **`grove`** | **Show help** |
-| **`grove .`** | **Launch workspace** (current dir, claude) |
+| **`grove .`** | **Launch workspace** (current dir, opencode) |
+| `grove claude` | Launch with Claude instead of OpenCode |
 | `grove opencode` | Launch with OpenCode instead of Claude |
 | `grove gemini` | Launch with Gemini CLI instead of Claude |
+| `grove codex` | Launch with Codex instead of Claude |
 | `grove /path/to/repo` | Launch workspace for a specific repo directory |
 | `grove /path gemini` | Launch for a specific repo with a specific AI editor |
 | `zj-kill` | Kill all Zellij sessions (clean slate) |
@@ -35,16 +40,19 @@
 *Work on multiple branches at the same time, each in its own directory and Zellij tab.*
 *Requires: `source ~/workspace/grove/git-worktree-aliases.sh` in your shell.*
 
+Canonical reference: [`docs/commands.md`](docs/commands.md)
+
 | Command | Description |
 | :--- | :--- |
 | `grove` | **Show help** |
-| `grove .` | **Launch** workspace — colored tabs per worktree (default: claude) |
+| `grove .` | **Launch** workspace — colored tabs per worktree (default: opencode) |
 | `wtab <branch>` | **Create** new branch + worktree |
 | `wta <branch>` | **Add** worktree for existing branch |
 | `wtls` | **List** all worktrees (`git worktree list`) |
 | `wtrm <path>` | **Remove** a worktree (force) |
 | `wtp [main]` | **Prune** merged / squash-merged / rebased worktrees |
 | `wtcd <branch>` | **cd** into a worktree by branch name |
+| `wtco <branch>` | **cd** into a worktree by branch name (shortcut alias) |
 | `wtinfo [branch]` | **Info** — path, HEAD, ahead/behind, dirty status |
 | `wtdiff [branch]` | **Diff** between worktree branch and base branch |
 | `wtrn <old> <new>` | **Rename** a worktree's branch |

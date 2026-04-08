@@ -159,6 +159,11 @@ alias wtls='git worktree list'
 alias wtrm='git worktree remove --force'
 
 # ---------------------------------------------------------------------------
+# wtco — alias for wtcd
+# ---------------------------------------------------------------------------
+alias wtco='wtcd'
+
+# ---------------------------------------------------------------------------
 # wtcd — cd into a worktree by branch name
 # Usage: wtcd <branch>
 # ---------------------------------------------------------------------------
@@ -169,12 +174,8 @@ wtcd() {
     fi
     local branch="$1"
     local wt_path
-    wt_path=$(git worktree list --porcelain | awk -v br="refs/heads/$branch" '
-        /^worktree / { wt = substr($0, 10) }
-        /^branch /   { if (substr($0, 8) == br) print wt }
-    ')
-    if [[ -z "$wt_path" ]]; then
-        echo "No worktree found for branch '$branch'"
+    wt_path=$(bash "$GROVE_INSTALL_DIR/git-worktree.sh" cd "$branch")
+    if [[ $? -ne 0 ]]; then
         return 1
     fi
     echo "Changing to worktree: $wt_path"
@@ -352,10 +353,11 @@ wtui() {
 # grove — launch the full AI-native workspace (God Mode)
 # Usage: grove [path] [ai-editor]
 #   grove                        # show help
-#   grove .                      # current dir, claude
-#   grove claude                 # current dir, claude (explicit)
+#   grove .                      # current dir, opencode
+#   grove claude                 # current dir, claude (explicit override)
 #   grove gemini                 # current dir, gemini
-#   grove /path/to/repo          # specific dir, claude
+#   grove codex                  # current dir, codex
+#   grove /path/to/repo          # specific dir, opencode
 #   grove /path/to/repo gemini   # specific dir, gemini
 #
 # Works from any git repo. Launches Zellij with one tab per worktree,

@@ -5,6 +5,7 @@
 #   ./launch-worktrees.sh                  # Use current repo
 #   ./launch-worktrees.sh /path/to/repo    # Explicit repo path
 #   ./launch-worktrees.sh --layout-only    # Print KDL to stdout (no launch)
+#   ./launch-worktrees.sh --write-layout /tmp/grove.kdl .
 #
 # Each worktree gets its own Zellij tab containing:
 #   Left:   lazygit focused on that worktree (60%)
@@ -12,10 +13,10 @@
 #   Right:  AI Agent (70% of right column) — right column is 40% total width
 #
 # A top tab-bar shows all worktree tabs for easy navigation.
-# A final "Overview" tab shows live git status across all worktrees.
+# A final "Overview" tab shows stacked live dashboards across all worktrees.
 #
 # Options:
-#   --ai <editor>    AI editor command (default: claude, or set AI_EDITOR)
+#   --ai <editor>    AI editor command (default: opencode, or set AI_EDITOR)
 #
 # Tab names come from the branch name (strips "refs/heads/").
 # Detached HEADs use the short commit SHA as the tab name.
@@ -33,8 +34,9 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 REPO_PATH=""
 LAYOUT_ONLY=false
+WRITE_LAYOUT_PATH=""
 SESSION_NAME=""  # set after REPO_PATH is resolved below
-AI_EDITOR="${AI_EDITOR:-claude}"
+AI_EDITOR="${AI_EDITOR:-opencode}"
 
 # Tab color palette — cycles through these for each worktree tab
 # Tab colors — cycles through these (cyan is reserved for the Overview tab)
@@ -46,6 +48,10 @@ TAB_DOTS=("🟢" "🔵" "🟡" "🟠")
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --layout-only) LAYOUT_ONLY=true; shift ;;
+        --write-layout)
+            WRITE_LAYOUT_PATH="${2:?--write-layout requires an output path}"
+            shift 2
+            ;;
         --kill-all)
             echo "Killing all Zellij sessions..."
             zellij kill-all-sessions 2>/dev/null || true
@@ -54,7 +60,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --ai)
-            AI_EDITOR="${2:?--ai requires an editor name (e.g. claude, opencode)}"
+            AI_EDITOR="${2:?--ai requires an editor name (e.g. claude, opencode, codex)}"
             shift 2
             ;;
         --help|-h)
@@ -87,6 +93,11 @@ fi
 
 HAS_LAZYGIT=false
 command -v lazygit &>/dev/null && HAS_LAZYGIT=true
+
+HAS_GH=false
+if command -v gh &>/dev/null && gh auth status &>/dev/null 2>&1; then
+    HAS_GH=true
+fi
 
 # ---------------------------------------------------------------------------
 # Parse git worktrees into parallel arrays
@@ -189,54 +200,33 @@ kdl_escape() {
 # KDL layout generation
 # ---------------------------------------------------------------------------
 generate_layout() {
-    cat <<'HEADER'
-layout {
-    default_tab_template {
-        pane size=1 borderless=true {
-            plugin location="zellij:tab-bar"
-        }
-        children
-        pane size=1 borderless=true {
-            plugin location="zellij:status-bar"
-        }
-    }
-
-HEADER
-
-    # Overview tab: live dashboard of all worktrees + management shell
-    local esc_repo
-    esc_repo=$(kdl_escape "$REPO_PATH")
     local script_dir
     script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    local esc_status_script
-    esc_status_script=$(kdl_escape "$script_dir/worktree-status.sh")
-    local esc_ai_status_script
-    esc_ai_status_script=$(kdl_escape "$script_dir/ai-status.sh")
-    local esc_pr_status_script
-    esc_pr_status_script=$(kdl_escape "$script_dir/pr-status.sh")
-    local esc_resource_monitor_script
-    esc_resource_monitor_script=$(kdl_escape "$script_dir/resource-monitor.sh")
+    local template_file="$script_dir/layouts/workspace.kdl.template"
+    local esc_repo esc_script_dir
+    local tabs_file gh_panes_file
 
-    cat <<OVERVIEW
-    // Overview tab — live project dashboards
-    tab name="📊 Overview" color="cyan" {
-        pane split_direction="vertical" size="70%" {
-            pane command="bash" name="Worktree Status" size="40%" {
-                args "-c" "while true; do _out=\$(\"$esc_status_script\" \"$esc_repo\" 2>/dev/null); clear; printf '%s' \"\$_out\"; sleep 15; done"
-            }
-            pane command="bash" name="AI Status" size="30%" {
-                args "-c" "while true; do _out=\$(\"$esc_ai_status_script\" 2>/dev/null); clear; printf '%s' \"\$_out\"; sleep 30; done"
-            }
-            pane command="bash" name="PR Status" size="30%" {
-                args "-c" "while true; do _out=\$(\"$esc_pr_status_script\" \"$esc_repo\" 2>/dev/null); clear; printf '%s' \"\$_out\"; sleep 60; done"
-            }
-        }
-        pane command="bash" name="Resources" size="30%" {
-            args "-c" "while true; do _out=\$(\"$esc_resource_monitor_script\" 2>/dev/null); clear; printf '%s' \"\$_out\"; sleep 5; done"
-        }
-    }
+    if [[ ! -f "$template_file" ]]; then
+        echo "Error: layout template not found at $template_file" >&2
+        return 1
+    fi
 
-OVERVIEW
+    esc_repo=$(kdl_escape "$REPO_PATH")
+    esc_script_dir=$(kdl_escape "$script_dir")
+    tabs_file=$(mktemp /tmp/grove-tabs-XXXXXXXX)
+    gh_panes_file=$(mktemp /tmp/grove-gh-panes-XXXXXXXX)
+    trap 'rm -f "$tabs_file" "$gh_panes_file"' RETURN
+
+    if $HAS_GH; then
+        {
+            printf '                pane command="bash" name="PR Status" {\n'
+            printf '                    args "-c" "while true; do _out=$(bash ./pr-status.sh \\\"%s\\\" 2>/dev/null); clear; printf '\''%%s'\'' \\\"$_out\\\"; sleep 60; done"\n' "$esc_repo"
+            printf '                }\n'
+            printf '                pane command="bash" name="CI / GitHub Actions" {\n'
+            printf '                    args "-c" "while true; do _out=$(bash ./ci-status.sh \\\"%s\\\" 2>/dev/null); clear; printf '\''%%s'\'' \\\"$_out\\\"; sleep 60; done"\n' "$esc_repo"
+            printf '                }\n'
+        } >> "$gh_panes_file"
+    fi
 
     for i in "${!WT_PATHS[@]}"; do
         local path="${WT_PATHS[$i]}"
@@ -263,50 +253,65 @@ OVERVIEW
         fi
 
         if [[ "$i" -eq 0 ]]; then
-            echo "    tab name=\"${tab_prefix} ${esc_name}\" color=\"$tab_color\" focus=true {"
+            printf '    tab name="%s %s" color="%s" focus=true {\n' "$tab_prefix" "$esc_name" "$tab_color" >> "$tabs_file"
         else
-            echo "    tab name=\"${tab_prefix} ${esc_name}\" color=\"$tab_color\" {"
+            printf '    tab name="%s %s" color="%s" {\n' "$tab_prefix" "$esc_name" "$tab_color" >> "$tabs_file"
         fi
 
         # THREE-COLUMN split: LazyGit (60%) | Workbench (12%) | AI Agent (28%)
-        echo "        pane split_direction=\"vertical\" {"
+        printf '        pane split_direction="vertical" {\n' >> "$tabs_file"
 
         # Left: lazygit (or plain shell if lazygit not installed)
         if $HAS_LAZYGIT; then
-            echo "            pane command=\"lazygit\" name=\"LazyGit\" size=\"60%\" {"
-            echo "                cwd \"$esc_path\""
-            echo "            }"
+            printf '            pane command="lazygit" name="LazyGit" size="60%%" {\n' >> "$tabs_file"
+            printf '                cwd "%s"\n' "$esc_path" >> "$tabs_file"
+            printf '            }\n' >> "$tabs_file"
         else
-            echo "            pane name=\"git: $esc_name\" size=\"60%\" {"
-            echo "                cwd \"$esc_path\""
-            echo "            }"
+            printf '            pane name="git: %s" size="60%%" {\n' "$esc_name" >> "$tabs_file"
+            printf '                cwd "%s"\n' "$esc_path" >> "$tabs_file"
+            printf '            }\n' >> "$tabs_file"
         fi
 
         # Right: Workbench (30%) | AI Agent (70%) — side by side
-        echo "            pane split_direction=\"horizontal\" size=\"40%\" {"
+        printf '            pane split_direction="horizontal" size="40%%" {\n' >> "$tabs_file"
 
-        echo "                pane name=\"Workbench\" size=\"40%\" {"
-        echo "                    cwd \"$esc_path\""
-        echo "                }"
+        printf '                pane name="Workbench" size="40%%" {\n' >> "$tabs_file"
+        printf '                    cwd "%s"\n' "$esc_path" >> "$tabs_file"
+        printf '                }\n' >> "$tabs_file"
 
-        echo "                pane command=\"$esc_ai\" name=\"AI Agent\" size=\"60%\" {"
-        echo "                    cwd \"$esc_path\""
+        printf '                pane command="%s" name="AI Agent" size="60%%" {\n' "$esc_ai" >> "$tabs_file"
+        printf '                    cwd "%s"\n' "$esc_path" >> "$tabs_file"
         if [[ "$i" -eq 0 ]]; then
-            echo "                    focus true"
+            printf '                    focus true\n' >> "$tabs_file"
         fi
-        echo "                }"
+        printf '                }\n' >> "$tabs_file"
 
-        echo "            }"
+        printf '            }\n' >> "$tabs_file"
 
-        echo "        }"
+        printf '        }\n' >> "$tabs_file"
 
-        echo "    }"
-        echo ""
+        printf '    }\n\n' >> "$tabs_file"
     done
 
-    cat <<'FOOTER'
-}
-FOOTER
+    python3 - "$template_file" "$tabs_file" "$gh_panes_file" "$esc_script_dir" "$esc_repo" <<'PY'
+import pathlib
+import sys
+
+template_path = pathlib.Path(sys.argv[1])
+tabs_path = pathlib.Path(sys.argv[2])
+gh_panes_path = pathlib.Path(sys.argv[3])
+grove_dir = sys.argv[4]
+repo_path = sys.argv[5]
+
+template = template_path.read_text()
+tabs = tabs_path.read_text()
+gh_panes = gh_panes_path.read_text()
+rendered = template.replace("{{GROVE_INSTALL_DIR}}", grove_dir)
+rendered = rendered.replace("{{REPO_PATH}}", repo_path)
+rendered = rendered.replace("    // {{WORKTREE_TABS}}", tabs.rstrip())
+rendered = rendered.replace("                // {{GITHUB_STACK_PANES}}", gh_panes.rstrip())
+print(rendered)
+PY
 }
 
 LAYOUT_CONTENT=$(generate_layout)
@@ -316,6 +321,12 @@ LAYOUT_CONTENT=$(generate_layout)
 # ---------------------------------------------------------------------------
 if $LAYOUT_ONLY; then
     echo "$LAYOUT_CONTENT"
+    exit 0
+fi
+
+if [[ -n "$WRITE_LAYOUT_PATH" ]]; then
+    printf '%s\n' "$LAYOUT_CONTENT" > "$WRITE_LAYOUT_PATH"
+    echo "Wrote rendered layout to $WRITE_LAYOUT_PATH"
     exit 0
 fi
 

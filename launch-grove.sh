@@ -5,10 +5,13 @@
 # one tab per git worktree, each with LazyGit + AI Agent + Workbench panes.
 #
 # Usage:
-#   ./launch-grove.sh                         # current dir, claude
+#   ./launch-grove.sh                         # current dir, opencode
+#   ./launch-grove.sh claude                  # current dir, claude
 #   ./launch-grove.sh opencode                # current dir, opencode
-#   ./launch-grove.sh /path/to/repo           # specific dir, claude
-#   ./launch-grove.sh /path/to/repo gemini    # specific dir, gemini
+#   ./launch-grove.sh codex                   # current dir, codex
+#   ./launch-grove.sh /path/to/repo           # specific dir, opencode
+#   ./launch-grove.sh /path/to/repo claude    # specific dir, claude
+#   ./launch-grove.sh /path/to/repo codex     # specific dir, codex
 
 set -euo pipefail
 
@@ -23,16 +26,24 @@ Usage:
 
 Arguments:
   path        Path to a git repo (default: current directory)
-  ai-editor   AI agent to use: claude | gemini | opencode (default: claude)
+  ai-editor   AI agent to use: claude | gemini | opencode | codex (default: opencode)
 
 Options:
   -h, --help  Show this help message
 
+Local Layout Testing:
+  bash launch-worktrees.sh --layout-only .
+  bash launch-worktrees.sh --write-layout /tmp/grove-layout.kdl .
+  zellij --layout /tmp/grove-layout.kdl
+
 Examples:
   grove                          Show this help message
-  grove .                        Launch with Claude in current repo
+  grove .                        Launch with OpenCode in current repo
+  grove claude                   Launch with Claude in current repo
   grove gemini                   Launch with Gemini in current repo
-  grove /path/to/repo            Launch with Claude in specified repo
+  grove codex                    Launch with Codex in current repo
+  grove /path/to/repo            Launch with OpenCode in specified repo
+  grove /path/to/repo claude     Launch with Claude in specified repo
   grove /path/to/repo opencode   Launch with OpenCode in specified repo
 
 Worktree Commands (run from inside a git repo):
@@ -55,11 +66,12 @@ Shell Aliases (from git-worktree-aliases.sh):
   wtls            List worktrees
   wtp             Prune merged worktrees
   wtcd <branch>   cd into a worktree
+  wtco <branch>   alias for wtcd
 
 Environment Variables:
   GWT_BASE_BRANCH    Base branch for prune/diff (default: main)
   GWT_WORKTREE_DIR   Override worktree parent directory
-  AI_EDITOR          Default AI editor (default: claude)
+  AI_EDITOR          Default AI editor (default: opencode)
 EOF
 }
 
@@ -94,7 +106,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-AI_EDITOR="${AI_EDITOR:-claude}"
+AI_EDITOR="${AI_EDITOR:-opencode}"
 
 echo "Launching grove with AI_EDITOR=$AI_EDITOR (per-worktree tabs)"
 

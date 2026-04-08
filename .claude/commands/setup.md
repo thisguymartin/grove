@@ -35,10 +35,10 @@ If the user has the repo cloned locally for development:
 
 Navigate to any git repository, then:
 ```bash
-grove              # launch with Claude (default AI editor)
-grove gemini       # launch with Gemini CLI
-grove opencode     # launch with OpenCode
+grove .
 ```
+
+Full command reference: [`docs/commands.md`](../../docs/commands.md)
 
 ## Worktree Commands (after sourcing aliases)
 
@@ -46,9 +46,7 @@ grove opencode     # launch with OpenCode
 |---------|-------------|
 | `wtab <branch>` | Create new branch + worktree |
 | `wta <branch>` | Add worktree for existing branch |
-| `wtls` | List all worktrees |
-| `wtrm <path>` | Remove a worktree |
-| `wtp` | Prune merged worktrees |
+| `wtco <branch>` | cd into a worktree by branch name |
 | `wtstatus` | Live worktree status dashboard |
 
 ## Zellij Navigation
