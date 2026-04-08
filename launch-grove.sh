@@ -10,8 +10,8 @@
 #   ./launch-grove.sh opencode                # current dir, opencode
 #   ./launch-grove.sh codex                   # current dir, codex
 #   ./launch-grove.sh /path/to/repo           # specific dir, opencode
-#   ./launch-grove.sh /path/to/repo claude    # specific dir, claude
-#   ./launch-grove.sh /path/to/repo codex     # specific dir, codex
+#   ./launch-grove.sh claude /path/to/repo    # specific dir, claude
+#   ./launch-grove.sh codex /path/to/repo     # specific dir, codex
 
 set -euo pipefail
 
@@ -22,11 +22,11 @@ usage() {
 Grove — AI-native terminal workspace
 
 Usage:
-  grove [options] [path] [ai-editor]
+  grove [options] [ai-editor] [path]
 
 Arguments:
-  path        Path to a git repo (default: current directory)
   ai-editor   AI agent to use: claude | gemini | opencode | codex (default: opencode)
+  path        Path to a git repo (default: current directory)
 
 Options:
   -h, --help  Show this help message
@@ -40,11 +40,12 @@ Examples:
   grove                          Show this help message
   grove .                        Launch with OpenCode in current repo
   grove claude                   Launch with Claude in current repo
+  grove claude .                 Launch with Claude in current repo
   grove gemini                   Launch with Gemini in current repo
   grove codex                    Launch with Codex in current repo
   grove /path/to/repo            Launch with OpenCode in specified repo
-  grove /path/to/repo claude     Launch with Claude in specified repo
-  grove /path/to/repo opencode   Launch with OpenCode in specified repo
+  grove claude /path/to/repo     Launch with Claude in specified repo
+  grove opencode /path/to/repo   Launch with OpenCode in specified repo
 
 Worktree Commands (run from inside a git repo):
   grove wt add <branch>          Add worktree for an existing branch
@@ -83,6 +84,13 @@ fi
 REPO_PATH=""
 AI_EDITOR=""
 
+is_ai_editor() {
+    case "$1" in
+        claude|gemini|opencode|codex) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 # Parse args
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -93,13 +101,17 @@ while [[ $# -gt 0 ]]; do
             exec "$SCRIPT_DIR/git-worktree.sh" "$@"
             ;;
         *)
-            if [[ -d "$1" ]]; then
+            if is_ai_editor "$1"; then
+                AI_EDITOR="$1"
+            elif [[ -d "$1" ]]; then
                 REPO_PATH="$(cd "$1" && pwd)"
             elif [[ -f "$1" ]]; then
                 # File path given — use its parent directory (like VS Code)
                 REPO_PATH="$(cd "$(dirname "$1")" && pwd)"
             else
-                AI_EDITOR="$1"
+                echo "Error: unrecognized argument '$1'"
+                echo "Usage: grove [ai-editor] [path]"
+                exit 1
             fi
             shift
             ;;

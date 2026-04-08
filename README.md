@@ -16,7 +16,7 @@ Grove is a thin shell layer on top of tools you already use — git worktrees, Z
 
 1. **Worktrees** — each branch lives in its own directory on disk, so you can have `main`, `feature/auth`, and `fix-login` all checked out at the same time with no stashing.
 
-2. **`grove .`** — discovers all worktrees in the current repo and generates a Zellij layout on the fly. Each worktree becomes a tab.
+2. **`grove .`** — discovers all worktrees in the current repo and generates a Zellij layout on the fly. Each worktree becomes a tab. Use `grove claude .`, `grove opencode .`, or `grove codex .` to choose a different AI editor before the path.
 
 3. **Each tab** gets three side-by-side panes:
    - **Left (60%):** LazyGit scoped to that worktree's directory
@@ -129,8 +129,8 @@ Most-used commands:
 | Command | Description |
 | :------ | :---------- |
 | `grove .` | Launch workspace with `opencode` as the default AI editor |
-| `grove claude` | Launch workspace with Claude |
-| `grove codex` | Launch workspace with Codex |
+| `grove claude .` | Launch workspace with Claude |
+| `grove codex .` | Launch workspace with Codex |
 | `wtab <branch>` | Create a new branch + worktree |
 | `wta <branch>` | Add worktree for an existing branch |
 | `wtco <branch>` | Jump into a worktree directory |
@@ -157,6 +157,7 @@ wtls
 
 # Launch workspace with all worktrees as tabs
 grove .
+grove claude .
 
 # Navigate tabs
 # Alt+Left/Right to switch between worktree tabs

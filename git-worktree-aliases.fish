@@ -392,14 +392,15 @@ end
 
 # ---------------------------------------------------------------------------
 # grove — launch the full AI-native workspace (God Mode)
-# Usage: grove [path] [ai-editor]
+# Usage: grove [ai-editor] [path]
 #   grove                        # show help
 #   grove .                      # current dir, opencode
 #   grove claude                 # current dir, claude (explicit override)
+#   grove claude .               # current dir, claude
 #   grove gemini                 # current dir, gemini
 #   grove codex                  # current dir, codex
 #   grove /path/to/repo          # specific dir, opencode
-#   grove /path/to/repo gemini   # specific dir, gemini
+#   grove gemini /path/to/repo   # specific dir, gemini
 #
 # Works from any git repo. Launches Zellij with one tab per worktree,
 # each containing LazyGit + AI Agent + Workbench.
