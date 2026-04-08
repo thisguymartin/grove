@@ -57,7 +57,7 @@ while [[ $# -gt 0 ]]; do
             zellij kill-all-sessions 2>/dev/null || true
             zellij delete-all-sessions 2>/dev/null || true
             echo "Done."
-            shift
+            exit 0
             ;;
         --ai)
             AI_EDITOR="${2:?--ai requires an editor name (e.g. claude, opencode, codex)}"
@@ -332,12 +332,9 @@ fi
 
 LAYOUT_FILE=$(mktemp /tmp/worktree-layout-XXXXXXXX)
 CONFIG_FILE=$(mktemp /tmp/worktree-config-XXXXXXXX)
-# Clean up temp files and Zellij session on exit (success or failure)
-trap '
-    rm -f "$LAYOUT_FILE" "$CONFIG_FILE"
-    zellij kill-session "$SESSION_NAME" 2>/dev/null || true
-    zellij delete-session "$SESSION_NAME" 2>/dev/null || true
-' EXIT
+# Clean up temp files on exit. Don't kill the Zellij session here — the user
+# may have detached intentionally and wants to reattach later.
+trap 'rm -f "$LAYOUT_FILE" "$CONFIG_FILE"' EXIT
 
 echo "$LAYOUT_CONTENT" > "$LAYOUT_FILE"
 
@@ -370,8 +367,8 @@ cleanup_zellij_session() {
     local session="$1"
     local timeout="${2:-5}"
 
-    # Match session name at start of line regardless of trailing status like (EXITED)
-    if ! zellij list-sessions 2>/dev/null | grep -q "^${session}"; then
+    # Strip ANSI color codes before matching — zellij list-sessions wraps names in escape sequences
+    if ! zellij list-sessions 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | grep -q "^${session}"; then
         return 0
     fi
 
@@ -381,7 +378,7 @@ cleanup_zellij_session() {
 
     # Poll until session is gone or timeout
     local elapsed=0
-    while zellij list-sessions 2>/dev/null | grep -q "^${session}"; do
+    while zellij list-sessions 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | grep -q "^${session}"; do
         if (( elapsed >= timeout )); then
             echo "Warning: session '$session' still present after ${timeout}s, force deleting..."
             zellij delete-session "$session" --force 2>/dev/null || true

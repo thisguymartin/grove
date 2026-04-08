@@ -114,7 +114,8 @@ do_install() {
     # 1. Kill existing Grove Zellij sessions
     if command -v zellij &>/dev/null; then
         local grove_sessions
-        grove_sessions=$(zellij list-sessions 2>/dev/null | grep -o 'grove-[^ ]*' || true)
+        # Strip ANSI color codes before matching — zellij wraps session names in escape sequences
+        grove_sessions=$(zellij list-sessions 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | grep -o 'grove-[^ ]*' || true)
         if [[ -n "$grove_sessions" ]]; then
             info "Killing existing Grove Zellij sessions..."
             while IFS= read -r session; do
@@ -207,7 +208,7 @@ do_uninstall() {
     # 1. Kill all Grove Zellij sessions
     if command -v zellij &>/dev/null; then
         local grove_sessions
-        grove_sessions=$(zellij list-sessions 2>/dev/null | grep -o 'grove-[^ ]*' || true)
+        grove_sessions=$(zellij list-sessions 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | grep -o 'grove-[^ ]*' || true)
         if [[ -n "$grove_sessions" ]]; then
             info "Killing Grove Zellij sessions..."
             while IFS= read -r session; do

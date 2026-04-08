@@ -1,8 +1,3 @@
-// Internal template consumed by launch-worktrees.sh.
-// This file is not a directly runnable Zellij layout because it contains
-// Grove placeholders for install directory, repo path, dynamic GitHub panes,
-// and dynamic worktree tabs.
-
 layout {
     default_tab_template {
         pane size=1 borderless=true {
