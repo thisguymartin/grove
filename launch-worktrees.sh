@@ -330,28 +330,9 @@ if [[ -n "$WRITE_LAYOUT_PATH" ]]; then
     exit 0
 fi
 
-LAYOUT_FILE=$(mktemp /tmp/worktree-layout-XXXXXXXX)
-CONFIG_FILE=$(mktemp /tmp/worktree-config-XXXXXXXX)
-# Clean up temp files on exit. Don't kill the Zellij session here — the user
-# may have detached intentionally and wants to reattach later.
-trap 'rm -f "$LAYOUT_FILE" "$CONFIG_FILE"' EXIT
+LAYOUT_FILE="/tmp/grove-layout-${REPO_NAME}.kdl"
 
 echo "$LAYOUT_CONTENT" > "$LAYOUT_FILE"
-
-# Session config: quit on close (don't leave detached sessions) + keybind overrides
-cat > "$CONFIG_FILE" <<'CONFIG'
-// When the terminal tab/window is closed, kill the session instead of detaching
-on_force_close "quit"
-
-keybinds {
-    tab {
-        bind "x" { SwitchToMode "normal"; }
-    }
-    shared_among "pane" "tmux" {
-        bind "x" { SwitchToMode "normal"; }
-    }
-}
-CONFIG
 
 ZELLIJ_SESSION_NAME="${ZELLIJ_SESSION_NAME:-}"
 if [[ -n "$ZELLIJ_SESSION_NAME" ]] || [[ "${ZELLIJ:-}" == "0" ]]; then
@@ -408,4 +389,4 @@ echo "  zellij attach <name>    # Reattach to it"
 echo ""
 
 export AI_EDITOR
-exec zellij --config "$CONFIG_FILE" --new-session-with-layout "$LAYOUT_FILE" --session "$SESSION_NAME"
+exec zellij --new-session-with-layout "$LAYOUT_FILE" --session "$SESSION_NAME"
