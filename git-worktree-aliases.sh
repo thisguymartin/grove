@@ -377,26 +377,7 @@ grove() {
         return
     fi
 
-    local repo_path="" ai_editor=""
-
-    # If first arg is a directory, treat as repo path
-    if [[ -n "${1:-}" && -d "$1" ]]; then
-        repo_path="$1"
-        shift
-    fi
-
-    # Remaining arg (if any) is the AI editor
-    ai_editor="${1:-}"
-
-    if [[ -n "$repo_path" && -n "$ai_editor" ]]; then
-        bash "$launcher" "$repo_path" "$ai_editor"
-    elif [[ -n "$repo_path" ]]; then
-        bash "$launcher" "$repo_path"
-    elif [[ -n "$ai_editor" ]]; then
-        bash "$launcher" "$ai_editor"
-    else
-        bash "$launcher"
-    fi
+    bash "$launcher" "$@"
 }
 
 # ---------------------------------------------------------------------------

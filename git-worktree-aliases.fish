@@ -418,30 +418,7 @@ function grove
         return
     end
 
-    set -l repo_path ""
-    set -l ai_editor ""
-    set -l remaining $argv
-
-    # If first arg is a directory, treat as repo path
-    if test (count $remaining) -gt 0; and test -d $remaining[1]
-        set repo_path $remaining[1]
-        set remaining $remaining[2..-1]
-    end
-
-    # Remaining arg (if any) is the AI editor
-    if test (count $remaining) -gt 0
-        set ai_editor $remaining[1]
-    end
-
-    if test -n "$repo_path"; and test -n "$ai_editor"
-        bash "$launcher" "$repo_path" "$ai_editor"
-    else if test -n "$repo_path"
-        bash "$launcher" "$repo_path"
-    else if test -n "$ai_editor"
-        bash "$launcher" "$ai_editor"
-    else
-        bash "$launcher"
-    end
+    bash "$launcher" $argv
 end
 
 # ---------------------------------------------------------------------------
