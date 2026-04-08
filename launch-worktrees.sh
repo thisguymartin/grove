@@ -13,7 +13,7 @@
 #   Right:  AI Agent (70% of right column) — right column is 40% total width
 #
 # A top tab-bar shows all worktree tabs for easy navigation.
-# A final "Overview" tab shows live git status across all worktrees.
+# A final "Overview" tab shows stacked live dashboards across all worktrees.
 #
 # Options:
 #   --ai <editor>    AI editor command (default: opencode, or set AI_EDITOR)
@@ -93,6 +93,11 @@ fi
 
 HAS_LAZYGIT=false
 command -v lazygit &>/dev/null && HAS_LAZYGIT=true
+
+HAS_GH=false
+if command -v gh &>/dev/null && gh auth status &>/dev/null 2>&1; then
+    HAS_GH=true
+fi
 
 # ---------------------------------------------------------------------------
 # Parse git worktrees into parallel arrays
@@ -199,7 +204,7 @@ generate_layout() {
     script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     local template_file="$script_dir/layouts/workspace.kdl.template"
     local esc_repo esc_script_dir
-    local tabs_file
+    local tabs_file gh_panes_file
 
     if [[ ! -f "$template_file" ]]; then
         echo "Error: layout template not found at $template_file" >&2
@@ -209,7 +214,19 @@ generate_layout() {
     esc_repo=$(kdl_escape "$REPO_PATH")
     esc_script_dir=$(kdl_escape "$script_dir")
     tabs_file=$(mktemp /tmp/grove-tabs-XXXXXXXX)
-    trap 'rm -f "$tabs_file"' RETURN
+    gh_panes_file=$(mktemp /tmp/grove-gh-panes-XXXXXXXX)
+    trap 'rm -f "$tabs_file" "$gh_panes_file"' RETURN
+
+    if $HAS_GH; then
+        {
+            printf '                pane command="bash" name="PR Status" {\n'
+            printf '                    args "-c" "while true; do _out=$(bash ./pr-status.sh \\\"%s\\\" 2>/dev/null); clear; printf '\''%%s'\'' \\\"$_out\\\"; sleep 60; done"\n' "$esc_repo"
+            printf '                }\n'
+            printf '                pane command="bash" name="CI / GitHub Actions" {\n'
+            printf '                    args "-c" "while true; do _out=$(bash ./ci-status.sh \\\"%s\\\" 2>/dev/null); clear; printf '\''%%s'\'' \\\"$_out\\\"; sleep 60; done"\n' "$esc_repo"
+            printf '                }\n'
+        } >> "$gh_panes_file"
+    fi
 
     for i in "${!WT_PATHS[@]}"; do
         local path="${WT_PATHS[$i]}"
@@ -276,20 +293,23 @@ generate_layout() {
         printf '    }\n\n' >> "$tabs_file"
     done
 
-    python3 - "$template_file" "$tabs_file" "$esc_script_dir" "$esc_repo" <<'PY'
+    python3 - "$template_file" "$tabs_file" "$gh_panes_file" "$esc_script_dir" "$esc_repo" <<'PY'
 import pathlib
 import sys
 
 template_path = pathlib.Path(sys.argv[1])
 tabs_path = pathlib.Path(sys.argv[2])
-grove_dir = sys.argv[3]
-repo_path = sys.argv[4]
+gh_panes_path = pathlib.Path(sys.argv[3])
+grove_dir = sys.argv[4]
+repo_path = sys.argv[5]
 
 template = template_path.read_text()
 tabs = tabs_path.read_text()
+gh_panes = gh_panes_path.read_text()
 rendered = template.replace("{{GROVE_INSTALL_DIR}}", grove_dir)
 rendered = rendered.replace("{{REPO_PATH}}", repo_path)
 rendered = rendered.replace("    // {{WORKTREE_TABS}}", tabs.rstrip())
+rendered = rendered.replace("                // {{GITHUB_STACK_PANES}}", gh_panes.rstrip())
 print(rendered)
 PY
 }

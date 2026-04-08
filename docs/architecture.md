@@ -32,9 +32,15 @@ Each worktree becomes its own Zellij tab.
 
 The dashboard scripts provide live visibility across all active worktrees.
 
+- Left (core): `worktree-status.sh`, `ai-status.sh`
+- Right (stacked): `pr-status.sh`, `ci-status.sh`, `stash-status.sh`, `resource-monitor.sh`
+- GitHub panes are rendered only when `gh` is installed and authenticated.
+
 - `worktree-status.sh`: worktree branch/dirty state
 - `ai-status.sh`: running AI agents and Claude token analytics
 - `pr-status.sh`: pull request / CI status per branch
+- `ci-status.sh`: recent GitHub Actions runs for the repo
+- `stash-status.sh`: global stash list and dirty-worktree tracker
 - `resource-monitor.sh`: CPU and memory usage for AI agents and tooling
 
 ## Repository Layout
@@ -49,6 +55,8 @@ Current top-level runtime files:
 - `ai-status.sh`: AI dashboard
 - `worktree-status.sh`: worktree dashboard
 - `pr-status.sh`: PR/CI dashboard
+- `ci-status.sh`: GitHub Actions dashboard
+- `stash-status.sh`: stash/WIP dashboard
 - `resource-monitor.sh`: process/resource dashboard
 - `install/install.sh`: installer/uninstaller
 - `layouts/workspace.kdl.template`: internal Zellij template rendered by `launch-worktrees.sh`
