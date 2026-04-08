@@ -3,6 +3,7 @@
 #
 # Usage:
 #   bash install.sh               # Install to default (~/.local/share/grove)
+#   bash install.sh --local       # Symlink local checkout (for development)
 #   bash install.sh --uninstall   # Remove Grove and shell integrations
 #   GROVE_DIR=~/my/path bash install.sh
 #
@@ -131,14 +132,23 @@ do_install() {
     cleanup_all_rc_files
     cleanup_legacy_installs
 
-    # 3. Clone (force-delete existing install for a clean slate)
-    if [[ -d "$GROVE_DIR" ]]; then
+    # 3. Install grove files
+    if [[ -d "$GROVE_DIR" ]] || [[ -L "$GROVE_DIR" ]]; then
         info "Removing existing Grove installation at $GROVE_DIR..."
         rm -rf "$GROVE_DIR"
     fi
-    info "Cloning Grove repository..."
     mkdir -p "$(dirname "$GROVE_DIR")"
-    git clone "$REPO_URL" "$GROVE_DIR"
+
+    if $LOCAL_INSTALL; then
+        # Resolve the repo root from wherever install.sh lives
+        local repo_root
+        repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+        info "Symlinking local checkout: $repo_root -> $GROVE_DIR"
+        ln -s "$repo_root" "$GROVE_DIR"
+    else
+        info "Cloning Grove repository..."
+        git clone "$REPO_URL" "$GROVE_DIR"
+    fi
 
     # 4. Install Dependencies
     if command -v brew &>/dev/null; then
@@ -260,9 +270,11 @@ do_uninstall() {
 
 # Parse flags
 ACTION="install"
+LOCAL_INSTALL=false
 for arg in "$@"; do
     case "$arg" in
         --uninstall|-u) ACTION="uninstall" ;;
+        --local|-l) LOCAL_INSTALL=true ;;
         --help|-h) ACTION="help" ;;
     esac
 done
@@ -276,6 +288,7 @@ elif [[ "$ACTION" == "help" ]]; then
     echo "  install.sh [options]"
     echo ""
     echo "Options:"
+    echo "  -l, --local        Symlink local checkout instead of cloning (for development)"
     echo "  -u, --uninstall    Remove Grove and its shell integrations"
     echo "  -h, --help         Show this help message"
     echo ""

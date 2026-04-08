@@ -353,8 +353,10 @@ keybinds {
 }
 CONFIG
 
-if [[ -n "${ZELLIJ_SESSION_NAME:-}" ]]; then
-    echo "Error: already inside Zellij session '$ZELLIJ_SESSION_NAME'."
+ZELLIJ_SESSION_NAME="${ZELLIJ_SESSION_NAME:-}"
+if [[ -n "$ZELLIJ_SESSION_NAME" ]] || [[ "${ZELLIJ:-}" == "0" ]]; then
+    echo ""
+    echo "Error: already inside Zellij session '${ZELLIJ_SESSION_NAME:-unknown}'."
     echo "Run this from outside Zellij, or detach first (Ctrl+o, d)."
     exit 1
 fi
@@ -400,8 +402,10 @@ for i in "${!WT_PATHS[@]}"; do
 done
 echo "    Overview (live status)"
 echo ""
-echo "Attach later with: zellij attach $SESSION_NAME"
+echo "To reattach later:"
+echo "  zellij list-sessions    # Find the session name"
+echo "  zellij attach <name>    # Reattach to it"
 echo ""
 
 export AI_EDITOR
-zellij --config "$CONFIG_FILE" --new-session-with-layout "$LAYOUT_FILE" --session "$SESSION_NAME"
+exec zellij --config "$CONFIG_FILE" --new-session-with-layout "$LAYOUT_FILE" --session "$SESSION_NAME"
