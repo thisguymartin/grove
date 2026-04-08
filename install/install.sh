@@ -2,7 +2,7 @@
 # Grove Installer/Uninstaller
 #
 # Usage:
-#   bash install.sh               # Install to default (~/workspace/grove)
+#   bash install.sh               # Install to default (~/.local/share/grove)
 #   bash install.sh --uninstall   # Remove Grove and shell integrations
 #   GROVE_DIR=~/my/path bash install.sh
 #
@@ -233,7 +233,7 @@ elif [[ "$ACTION" == "help" ]]; then
     echo "  -h, --help         Show this help message"
     echo ""
     echo "Environment Variables:"
-    echo "  GROVE_DIR          Override the installation directory (default: ~/workspace/grove)"
+    echo "  GROVE_DIR          Override the installation directory (default: ~/.local/share/grove)"
 else
     do_install
 fi
