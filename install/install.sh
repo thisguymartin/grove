@@ -57,6 +57,47 @@ check_prereqs() {
     fi
 }
 
+cleanup_rc_file() {
+    local rc_file="$1"
+
+    [[ -f "$rc_file" ]] || return 0
+
+    cp "$rc_file" "${rc_file}.bak"
+    sed -i.tmp '/# Grove .*git worktree workspace/d' "$rc_file"
+    sed -i.tmp '/git-worktree-aliases\.sh/d' "$rc_file"
+    sed -i.tmp '/git-worktree-aliases\.fish/d' "$rc_file"
+    sed -i.tmp '/alias gwt=.*git-worktree\.sh/d' "$rc_file"
+    rm -f "${rc_file}.tmp"
+}
+
+cleanup_all_rc_files() {
+    local rc_files=(
+        "$HOME/.zshrc"
+        "$HOME/.bashrc"
+        "$HOME/.bash_profile"
+        "$HOME/.profile"
+        "$HOME/.config/fish/config.fish"
+    )
+
+    for candidate in "${rc_files[@]}"; do
+        cleanup_rc_file "$candidate"
+    done
+}
+
+cleanup_legacy_installs() {
+    local legacy_dirs=(
+        "$HOME/workspace/grove"
+        "$HOME/.local/share/grove"
+    )
+
+    for dir in "${legacy_dirs[@]}"; do
+        [[ "$dir" == "$GROVE_DIR" ]] && continue
+        [[ -d "$dir" ]] || continue
+        info "Removing legacy Grove installation at $dir..."
+        rm -rf "$dir"
+    done
+}
+
 # ─── Installation ─────────────────────────────────────────────────────────────
 
 do_install() {
@@ -84,7 +125,12 @@ do_install() {
         fi
     fi
 
-    # 2. Clone (force-delete existing install for a clean slate)
+    # 2. Clean old shell integration and legacy installs
+    info "Cleaning previous Grove shell integration..."
+    cleanup_all_rc_files
+    cleanup_legacy_installs
+
+    # 3. Clone (force-delete existing install for a clean slate)
     if [[ -d "$GROVE_DIR" ]]; then
         info "Removing existing Grove installation at $GROVE_DIR..."
         rm -rf "$GROVE_DIR"
@@ -93,13 +139,13 @@ do_install() {
     mkdir -p "$(dirname "$GROVE_DIR")"
     git clone "$REPO_URL" "$GROVE_DIR"
 
-    # 3. Install Dependencies
+    # 4. Install Dependencies
     if command -v brew &>/dev/null; then
         info "Installing dependencies via Homebrew..."
         brew bundle --file="$GROVE_DIR/brewfile" || warn "Brew bundle failed. You may need to install dependencies manually."
     fi
 
-    # 4. Wire up shell aliases
+    # 5. Wire up shell aliases
     local shell_name
     shell_name=$(basename "$SHELL")
 
@@ -116,10 +162,10 @@ do_install() {
         success "Shell integration already present in $rc_file"
     else
         info "Adding shell integration to $rc_file..."
+        mkdir -p "$(dirname "$rc_file")"
         echo "" >> "$rc_file"
         echo "# Grove — git worktree workspace" >> "$rc_file"
         if [[ "$shell_name" == "fish" ]]; then
-            mkdir -p "$(dirname "$rc_file")"
             echo "if test -f \"$aliases_file\"; $source_line; end" >> "$rc_file"
         else
             echo "[[ -f \"$aliases_file\" ]] && $source_line" >> "$rc_file"
@@ -127,7 +173,7 @@ do_install() {
         success "Added aliases to $rc_file"
     fi
 
-    # 5. Optional 'gwt' alias
+    # 6. Optional 'gwt' alias
     local gwt_alias="alias gwt='$GROVE_DIR/git-worktree.sh'"
     if ! grep -qF "$gwt_alias" "$rc_file" 2>/dev/null; then
         echo ""
