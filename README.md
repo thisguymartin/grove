@@ -1,6 +1,6 @@
 # Grove
 
-Grove is an AI-native terminal workspace for developers who work across multiple git branches simultaneously. Run one command from any repo and get a fully wired Zellij session — one color-coded tab per worktree, each pre-loaded with LazyGit, your AI agent of choice, and a shell.
+Grove is an AI-native terminal workspace for developers who work across multiple git branches simultaneously. Run one command from any repo and get a fully wired Zellij session with a custom Grove tab bar: one tab per worktree, each pre-loaded with LazyGit, your AI agent of choice, and a shell.
 
 No config files to edit. No sessions to manage. Just `grove` and you're in.
 
@@ -23,9 +23,11 @@ Grove is a thin shell layer on top of tools you already use — git worktrees, Z
    - **Middle (~12%):** A Workbench shell — run tests, servers, whatever
    - **Right (~28%):** Your AI agent (`claude`, `gemini`, `opencode`, or `codex`) in that worktree
 
-4. **Overview tab** — the first tab shows a live dashboard with worktree status, AI agent status, PR/CI status, and resource monitoring across all worktrees.
+4. **Custom tab bar** — Grove vendors `zjstatus` and replaces the stock Zellij tab/status bars with one colorful top bar. It shows mode, worktree tabs, the active AI editor, and the Zellij session name. If you prefer the native Zellij bars, launch with `GROVE_ZELLIJ_BAR=stock grove .`.
 
-5. **Session hygiene** — `grove` auto-kills any previous session with the same name before launching, and sessions quit when you close the terminal. No stale Zellij sessions accumulating.
+5. **Overview tab** — the first tab shows a live dashboard with worktree status, AI agent status, PR/CI status, and resource monitoring across all worktrees.
+
+6. **Session hygiene** — `grove` auto-kills any previous session with the same name before launching, and sessions quit when you close the terminal. No stale Zellij sessions accumulating.
 
 The workflow: create worktrees with `wtab`/`wta`, run `grove`, and navigate between branches with `Alt+Left/Right`. Clean up finished branches with `wtrm` or `wtp`.
 
@@ -112,11 +114,20 @@ bash ./launch-worktrees.sh --write-layout /tmp/grove-layout.kdl .
 zellij --layout /tmp/grove-layout.kdl
 ```
 
+To test the old stock Zellij bars:
+
+```bash
+GROVE_ZELLIJ_BAR=stock bash ./launch-worktrees.sh --write-layout /tmp/grove-layout.kdl .
+zellij --layout /tmp/grove-layout.kdl
+```
+
 This will:
 
 1. Discover all git worktrees in your current repo
 2. Auto-kill any previous session with the same name
-3. Launch Zellij with an **Overview tab** (first) + **one color-coded tab per worktree**
+3. Launch Zellij with an **Overview tab** (first) + **one custom-bar tab per worktree**
+
+On first launch, Zellij may ask for permission to load the vendored `zjstatus` plugin from `vendor/zjstatus/zjstatus.wasm`.
 
 Sessions auto-quit when you close the terminal — no stale sessions.
 
@@ -204,6 +215,8 @@ Note: `layouts/workspace.kdl.template` is an internal template rendered by Grove
 - [Zellij](https://zellij.dev) — terminal multiplexer
 - [LazyGit](https://github.com/jesseduffield/lazygit) — git TUI (optional, falls back to shell)
 - [Claude Code](https://claude.ai/claude-code), [Gemini CLI](https://github.com/google-gemini/gemini-cli), [OpenCode](https://github.com/opencode-ai/opencode), or Codex CLI (`codex`) — AI agent (optional)
+
+Grove vendors [`zjstatus`](https://github.com/dj95/zjstatus) for the custom Zellij bar. No separate install is required.
 
 ## Claude Code Integration
 
