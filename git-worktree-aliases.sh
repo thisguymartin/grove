@@ -350,20 +350,20 @@ wtui() {
 }
 
 # ---------------------------------------------------------------------------
-# grove — launch the full AI-native workspace (God Mode)
-# Usage: grove [ai-editor] [path]
+# grove — git-style entry point for the AI-native workspace
+# Usage: grove <command> [args]   |   grove [ai-editor] [path]
 #   grove                        # show help
-#   grove .                      # current dir, opencode
-#   grove claude                 # current dir, claude (explicit override)
-#   grove claude .               # current dir, claude
-#   grove gemini                 # current dir, gemini
-#   grove codex                  # current dir, codex
-#   grove /path/to/repo          # specific dir, opencode
-#   grove gemini /path/to/repo   # specific dir, gemini
+#   grove up [ai] [path]         # launch Zellij workspace
+#   grove .                      # current dir, opencode (back-compat)
+#   grove claude                 # current dir, claude (back-compat)
+#   grove new feat/x             # create branch + worktree
+#   grove cd feat/x              # jump into a worktree (changes cwd)
+#   grove main                   # jump into the main worktree (changes cwd)
+#   grove go feat/x              # jump to the worktree's Zellij tab
+#   grove agents                 # live dashboard of running AI agents
 #
-# Works from any git repo. Launches Zellij with one tab per worktree,
-# each containing LazyGit + AI Agent + Workbench.
-# Auto-kills any existing session with the same name before launching.
+# `cd` and `main` change the *parent shell's* cwd, so they're handled here
+# (a subprocess can't cd for you). Everything else delegates to launch-grove.sh.
 # ---------------------------------------------------------------------------
 grove() {
     local launcher="$GROVE_INSTALL_DIR/launch-grove.sh"
@@ -371,14 +371,29 @@ grove() {
         echo "Error: launch-grove.sh not found at $launcher"
         return 1
     fi
+    local toolkit="$GROVE_INSTALL_DIR/git-worktree.sh"
 
-    # Pass wt/worktree subcommands through with all remaining args
-    if [[ "${1:-}" == "wt" || "${1:-}" == "worktree" ]]; then
-        bash "$launcher" "$@"
-        return
-    fi
-
-    bash "$launcher" "$@"
+    case "${1:-}" in
+        cd)
+            if [[ -z "${2:-}" ]]; then
+                echo "Usage: grove cd <branch>"
+                return 1
+            fi
+            local wt_path
+            wt_path=$(bash "$toolkit" which "$2") || return 1
+            echo "Changing to worktree: $wt_path"
+            cd "$wt_path" || return 1
+            ;;
+        main)
+            local root_path
+            root_path=$(bash "$toolkit" root) || return 1
+            echo "Changing to main worktree: $root_path"
+            cd "$root_path" || return 1
+            ;;
+        *)
+            bash "$launcher" "$@"
+            ;;
+    esac
 }
 
 # ---------------------------------------------------------------------------
