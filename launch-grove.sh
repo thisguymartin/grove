@@ -19,59 +19,50 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
     cat <<'EOF'
-Grove — AI-native terminal workspace
+Grove — git-style AI-native terminal workspace
 
 Usage:
-  grove [options] [ai-editor] [path]
+  grove <command> [args]
+  grove [ai-editor] [path]      Shorthand for `grove up` (back-compat)
 
-Arguments:
-  ai-editor   AI agent to use: claude | gemini | opencode | codex (default: opencode)
-  path        Path to a git repo (default: current directory)
+Workspace
+  grove up [ai-editor] [path]    Launch Zellij, one tab per worktree
+  grove status [path]            Live worktree status dashboard
+  grove agents                   Live dashboard of running AI agents
 
-Options:
-  -h, --help  Show this help message
+Worktrees
+  grove new <branch>             Create a new branch + worktree
+  grove add <branch>             Add a worktree for an existing branch
+  grove ls                       List all worktrees
+  grove rm <branch>              Remove a worktree (prompts to delete branch)
+  grove cd <branch>              Jump into a worktree (shell cwd)
+  grove main                     Jump into the main worktree (shell cwd)
+  grove which <branch>           Print a worktree's path
+  grove root                     Print the main worktree path
+  grove run <branch> [--] <cmd>  Run a command inside a worktree's directory
+  grove exec [--] <cmd>          Run a command in EVERY worktree (fan-out)
+  grove sync [branch]            Fetch + rebase the branch onto its base
+  grove pr [branch]              Open (or create) the branch's GitHub PR
+  grove mv <branch> <new-path>   Move a worktree to a new directory
+  grove log [branch]             git log of the branch vs base
+  grove open <branch>            Open a worktree in your editor ($GROVE_EDITOR)
+  grove info / diff / rename / prune / lock / unlock / tab
 
-Local Layout Testing:
-  bash launch-worktrees.sh --layout-only .
-  bash launch-worktrees.sh --write-layout /tmp/grove-layout.kdl .
-  zellij --layout /tmp/grove-layout.kdl
+AI & navigation
+  grove go <branch>              Jump to the worktree's Zellij tab (or attach)
+  grove agent <branch> [ai]      Open/focus an AI agent tab for a worktree
+  grove agents                   Live dashboard of running AI agents
 
-Examples:
-  grove                          Show this help message
+Back-compat
   grove .                        Launch with OpenCode in current repo
-  grove claude                   Launch with Claude in current repo
-  grove claude .                 Launch with Claude in current repo
-  grove gemini                   Launch with Gemini in current repo
-  grove codex                    Launch with Codex in current repo
-  grove /path/to/repo            Launch with OpenCode in specified repo
-  grove claude /path/to/repo     Launch with Claude in specified repo
-  grove opencode /path/to/repo   Launch with OpenCode in specified repo
-
-Worktree Commands (run from inside a git repo):
-  grove wt add <branch>          Add worktree for an existing branch
-  grove wt new <branch>          Create a new branch + worktree
-  grove wt rm  <branch>          Remove a worktree (delete a branch)
-  grove wt ls                    List all worktrees
-  grove wt prune                 Remove worktrees for merged/stale branches
-  grove wt info [branch]         Show path, HEAD, ahead/behind, dirty status
-  grove wt diff [branch]         Show diff vs base branch
-  grove wt rename <old> <new>    Rename a worktree's branch
-  grove wt lock <path>           Lock a worktree
-  grove wt unlock <path>         Unlock a worktree
-  grove wt cd <branch>           Print the path of a worktree by branch name
-
-Shell Aliases (from git-worktree-aliases.sh):
-  wtab <branch>   Create new branch + worktree
-  wta  <branch>   Add worktree for existing branch
-  wtrm <path>     Force remove worktree
-  wtls            List worktrees
-  wtp             Prune merged worktrees
-  wtcd <branch>   cd into a worktree
-  wtco <branch>   alias for wtcd
+  grove claude [path]            Launch with Claude
+  grove wt <cmd>                 Old worktree sub-dispatch (still works)
+  wtab / wta / wtcd / wtls ...   Shell aliases (still work)
 
 Environment Variables:
-  GWT_BASE_BRANCH    Base branch for prune/diff (default: main)
+  GWT_BASE_BRANCH    Base branch for prune/diff/sync/log (default: origin/HEAD or main)
   GWT_WORKTREE_DIR   Override worktree parent directory
+  GROVE_EDITOR       Editor for `grove open` (default: $EDITOR or code)
   AI_EDITOR          Default AI editor (default: opencode)
 EOF
 }
@@ -90,6 +81,31 @@ is_ai_editor() {
         *) return 1 ;;
     esac
 }
+
+# Worktree / AI verbs that are delegated to git-worktree.sh.
+is_worktree_verb() {
+    case "$1" in
+        new|add|ls|list|rm|which|root|run|exec|sync|pr|mv|log|open|go|agent|agents|status|info|diff|rename|prune|tab|lock|unlock|cd) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# ─── git-style verb dispatch ────────────────────────────────────────────────
+# Route `grove <verb>` to git-worktree.sh. `up` triggers the workspace launch.
+# AI-editor names and paths fall through to the launch arg parser (back-compat).
+case "${1:-}" in
+    up)
+        shift ;;                       # fall through to launch with remaining args
+    wt|worktree)
+        shift
+        exec "$SCRIPT_DIR/git-worktree.sh" "$@" ;;
+    help)
+        usage; exit 0 ;;
+    *)
+        if [[ -n "${1:-}" ]] && is_worktree_verb "$1"; then
+            exec "$SCRIPT_DIR/git-worktree.sh" "$@"
+        fi ;;
+esac
 
 # Parse args
 while [[ $# -gt 0 ]]; do

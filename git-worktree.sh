@@ -20,6 +20,8 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || {
@@ -36,6 +38,31 @@ ensure_worktree_dir() {
     if [[ ! -d "$WORKTREE_DIR" ]]; then
         mkdir -p "$WORKTREE_DIR"
     fi
+}
+
+# Print the worktree path for a branch (empty if none).
+# Usage: resolve_worktree_path <branch>
+resolve_worktree_path() {
+    local branch="$1"
+    git worktree list --porcelain | awk -v br="refs/heads/$branch" '
+        /^worktree / { wt = substr($0, 10) }
+        /^branch /   { if (substr($0, 8) == br) print wt }
+    '
+}
+
+# Resolve the base branch: $GWT_BASE_BRANCH, else origin/HEAD, else "main".
+# Usage: base=$(detect_base_branch)
+detect_base_branch() {
+    local default_base
+    default_base=$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null \
+        | sed 's@^origin/@@' || true)
+    echo "${GWT_BASE_BRANCH:-${default_base:-main}}"
+}
+
+# Name of the Zellij session for this repo (current session if inside one).
+# Usage: session=$(grove_session)
+grove_session() {
+    echo "${ZELLIJ_SESSION_NAME:-grove-${REPO_NAME}}"
 }
 
 # ─── Zellij Integration ───────────────────────────────────────────────────────
@@ -59,7 +86,7 @@ layout {
         }
     }
 
-    tab name="🤖 ${branch}" color="magenta" {
+    tab name="${branch}" color="magenta" {
         pane split_direction="vertical" {
             pane command="lazygit" name="LazyGit" size="60%" {
                 cwd "${wt_path}"
@@ -434,21 +461,16 @@ HEADER
         "#d7af5f" "#ff5f87" "#00d7af" "#5f87d7" "#d78700"
     )
 
-    # Colored dot emoji per tab — visible even when Zellij dims inactive tabs
-    local -a tab_dots=("🟢" "🔵" "🟡" "🟣" "🟠" "🔴" "🔶" "🔷" "⚪" "⚫" "🟤" "🟥" "🩶" "🟦" "🟧")
-
     # One tab per worktree
     for i in "${!paths[@]}"; do
         local path="${paths[$i]}"
         local branch="${branches[$i]}"
-        local color_index=$((i % ${#tab_colors[@}}))
+        local color_index=$((i % ${#tab_colors[@]}))
         local tab_color="${tab_colors[$color_index]}"
-        local dot_index=$((i % ${#tab_dots[@]}))
-        local tab_dot="${tab_dots[$dot_index]}"
 
         cat <<EOF
 
-    tab name="${tab_dot} ${branch}" color="${tab_color}" {
+    tab name="${branch}" color="${tab_color}" {
         // TOP: LazyGit + AI Agent side by side
         pane split_direction="vertical" size="70%" {
             pane command="lazygit" name="LazyGit" {
@@ -489,19 +511,23 @@ FOOTER
 
 # ─── New Commands ─────────────────────────────────────────────────────────────
 
-cmd_cd() {
-    local branch="${1:?Usage: git-worktree.sh cd <branch>}"
+# Print the path of a worktree by branch name.
+# A subprocess can't change the parent shell's cwd — the `grove()` shell
+# function captures this output and runs `cd` itself (see git-worktree-aliases.sh).
+cmd_which() {
+    local branch="${1:?Usage: git-worktree.sh which <branch>}"
     local wt_path
-    wt_path=$(git worktree list --porcelain | awk -v br="refs/heads/$branch" '
-        /^worktree / { wt = substr($0, 10) }
-        /^branch /   { if (substr($0, 8) == br) print wt }
-    ')
+    wt_path=$(resolve_worktree_path "$branch")
     if [[ -z "$wt_path" ]]; then
-        echo "No worktree found for branch '$branch'"
+        echo "No worktree found for branch '$branch'" >&2
         exit 1
     fi
-    # Subprocess can't change parent shell's cwd, so just print the path
     echo "$wt_path"
+}
+
+# Print the path of the main worktree (the original clone).
+cmd_root() {
+    git worktree list --porcelain | awk '/^worktree / { print substr($0, 10); exit }'
 }
 
 cmd_info() {
@@ -568,10 +594,8 @@ cmd_diff() {
         exit 1
     fi
 
-    local default_base
-    default_base=$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null \
-        | sed 's@^origin/@@' || true)
-    local base="${GWT_BASE_BRANCH:-${default_base:-main}}"
+    local base
+    base=$(detect_base_branch)
 
     echo "Diff: $branch vs $base"
     echo "─────────────────────────────────────────"
@@ -591,10 +615,7 @@ cmd_rename() {
     echo "Branch renamed: $old -> $new"
 
     local wt_path
-    wt_path=$(git worktree list --porcelain | awk -v br="refs/heads/$new" '
-        /^worktree / { wt = substr($0, 10) }
-        /^branch /   { if (substr($0, 8) == br) print wt }
-    ')
+    wt_path=$(resolve_worktree_path "$new")
     if [[ -n "$wt_path" ]]; then
         echo "Note: worktree path is still: $wt_path"
         echo "  The directory was not renamed."
@@ -613,56 +634,285 @@ cmd_unlock() {
     echo "Worktree unlocked: $path"
 }
 
+# Resolve a branch to a worktree path or exit with an error.
+# Usage: wt=$(require_worktree_path <branch>)
+require_worktree_path() {
+    local branch="${1:?branch required}"
+    local wt_path
+    wt_path=$(resolve_worktree_path "$branch")
+    if [[ -z "$wt_path" ]]; then
+        echo "No worktree found for branch '$branch'" >&2
+        exit 1
+    fi
+    echo "$wt_path"
+}
+
+# Drop a leading "--" separator from the argument list, if present.
+# Usage: strip_dashdash "$@"; set -- "${STRIPPED_ARGS[@]}"
+strip_dashdash() {
+    STRIPPED_ARGS=("$@")
+    if [[ "${1:-}" == "--" ]]; then
+        STRIPPED_ARGS=("${@:2}")
+    fi
+}
+
+# Run a command inside a single worktree's directory.
+# Usage: cmd_run <branch> [--] <cmd> [args...]
+cmd_run() {
+    local branch="${1:?Usage: git-worktree.sh run <branch> [--] <cmd> [args...]}"
+    shift
+    strip_dashdash "$@"
+    set -- "${STRIPPED_ARGS[@]}"
+    if [[ $# -eq 0 ]]; then
+        echo "Error: no command given" >&2
+        echo "Usage: git-worktree.sh run <branch> [--] <cmd> [args...]" >&2
+        exit 1
+    fi
+    local wt_path
+    wt_path=$(require_worktree_path "$branch")
+    (cd "$wt_path" && exec "$@")
+}
+
+# Run a command in EVERY worktree directory (fan-out).
+# Usage: cmd_exec [--] <cmd> [args...]
+cmd_exec() {
+    strip_dashdash "$@"
+    set -- "${STRIPPED_ARGS[@]}"
+    if [[ $# -eq 0 ]]; then
+        echo "Error: no command given" >&2
+        echo "Usage: git-worktree.sh exec [--] <cmd> [args...]" >&2
+        exit 1
+    fi
+    local wt_path
+    while IFS= read -r wt_path; do
+        [[ -z "$wt_path" ]] && continue
+        echo "── ${wt_path} ──────────────────────────────"
+        (cd "$wt_path" && "$@") || echo "  (command failed in $wt_path)"
+    done < <(git worktree list --porcelain | awk '/^worktree / { print substr($0, 10) }')
+}
+
+# Fetch + rebase a branch onto its base branch. Refuses a dirty tree.
+# Usage: cmd_sync [branch]
+cmd_sync() {
+    local branch="${1:-$(git symbolic-ref --short HEAD 2>/dev/null)}"
+    if [[ -z "$branch" ]]; then
+        echo "Error: not on a branch and no branch specified" >&2
+        exit 1
+    fi
+    local wt_path
+    wt_path=$(require_worktree_path "$branch")
+
+    if [[ -n "$(git -C "$wt_path" status --porcelain)" ]]; then
+        echo "Error: worktree for '$branch' has uncommitted changes. Commit or stash first." >&2
+        exit 1
+    fi
+
+    local base
+    base=$(detect_base_branch)
+    echo "Syncing '$branch' onto 'origin/$base'..."
+    git -C "$wt_path" fetch origin "$base"
+    git -C "$wt_path" rebase "origin/$base"
+}
+
+# Open (or create) the branch's GitHub PR. Requires the gh CLI.
+# Usage: cmd_pr [branch]
+cmd_pr() {
+    if ! command -v gh >/dev/null 2>&1; then
+        echo "Error: 'gh' (GitHub CLI) is required for 'grove pr'. Install: https://cli.github.com" >&2
+        exit 1
+    fi
+    local branch="${1:-$(git symbolic-ref --short HEAD 2>/dev/null)}"
+    if [[ -z "$branch" ]]; then
+        echo "Error: not on a branch and no branch specified" >&2
+        exit 1
+    fi
+    local wt_path
+    wt_path=$(require_worktree_path "$branch")
+
+    if (cd "$wt_path" && gh pr view "$branch" --web) 2>/dev/null; then
+        return 0
+    fi
+    echo "No existing PR for '$branch' — creating one..."
+    (cd "$wt_path" && gh pr create --web --head "$branch")
+}
+
+# Move a worktree to a new directory.
+# Usage: cmd_mv <branch> <new-path>
+cmd_mv() {
+    local branch="${1:?Usage: git-worktree.sh mv <branch> <new-path>}"
+    local new_path="${2:?Usage: git-worktree.sh mv <branch> <new-path>}"
+    local wt_path
+    wt_path=$(require_worktree_path "$branch")
+    git worktree move "$wt_path" "$new_path"
+    echo "Worktree moved: $wt_path -> $new_path"
+}
+
+# Show git log of a branch vs its base branch.
+# Usage: cmd_log [branch]
+cmd_log() {
+    local branch="${1:-$(git symbolic-ref --short HEAD 2>/dev/null)}"
+    if [[ -z "$branch" ]]; then
+        echo "Error: not on a branch and no branch specified" >&2
+        exit 1
+    fi
+    local base
+    base=$(detect_base_branch)
+    echo "Log: $base..$branch"
+    echo "─────────────────────────────────────────"
+    git log --oneline --no-merges "$base..$branch"
+}
+
+# Open a worktree in your editor ($GROVE_EDITOR, else $EDITOR, else code).
+# Usage: cmd_open <branch>
+cmd_open() {
+    local branch="${1:?Usage: git-worktree.sh open <branch>}"
+    local wt_path
+    wt_path=$(require_worktree_path "$branch")
+    local editor="${GROVE_EDITOR:-${EDITOR:-code}}"
+    "$editor" "$wt_path"
+}
+
+# Jump to a worktree's Zellij tab (or attach the session when outside Zellij).
+# Tabs are named exactly by branch, so go-to-tab-name resolves directly.
+# Usage: cmd_go <branch>
+cmd_go() {
+    local branch="${1:?Usage: git-worktree.sh go <branch>}"
+    if [[ -n "${ZELLIJ:-}" ]]; then
+        zellij action go-to-tab-name "$branch" || {
+            echo "No Zellij tab named '$branch'. Run 'grove up' first, or 'grove agent $branch'." >&2
+            exit 1
+        }
+    else
+        local session
+        session=$(grove_session)
+        if ! zellij list-sessions 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | grep -q "^${session}"; then
+            echo "No running Zellij session '$session'. Launch it with 'grove up'." >&2
+            exit 1
+        fi
+        echo "Attaching to '$session' — switch to the '$branch' tab once inside (Alt+←/→)."
+        zellij attach "$session"
+    fi
+}
+
+# Open or focus an AI agent tab for a worktree.
+# If the tab doesn't exist yet, create it (with optional AI editor override).
+# Usage: cmd_agent <branch> [ai-editor]
+cmd_agent() {
+    local branch="${1:?Usage: git-worktree.sh agent <branch> [ai-editor]}"
+    local ai_editor="${2:-${AI_EDITOR:-opencode}}"
+    local wt_path
+    wt_path=$(require_worktree_path "$branch")
+
+    # Try to focus an existing tab first.
+    if [[ -n "${ZELLIJ:-}" ]] && zellij action go-to-tab-name "$branch" 2>/dev/null; then
+        return 0
+    fi
+    # Otherwise create the tab (works inside Zellij or against the grove session).
+    AI_EDITOR="$ai_editor" maybe_add_zellij_tab "$wt_path" "$branch"
+    if [[ -n "${ZELLIJ:-}" ]]; then
+        zellij action go-to-tab-name "$branch" 2>/dev/null || true
+    fi
+}
+
+# Live dashboard of running AI agents (refreshes every 5s).
+cmd_agents() {
+    local script="$SCRIPT_DIR/ai-status.sh"
+    if [[ ! -f "$script" ]]; then
+        echo "Error: ai-status.sh not found at $script" >&2
+        exit 1
+    fi
+    while true; do
+        clear
+        bash "$script" || true
+        sleep 5
+    done
+}
+
+# Live worktree status dashboard (refreshes every 2s).
+# Usage: cmd_status [repo-path]
+cmd_status() {
+    local script="$SCRIPT_DIR/worktree-status.sh"
+    if [[ ! -f "$script" ]]; then
+        echo "Error: worktree-status.sh not found at $script" >&2
+        exit 1
+    fi
+    local target="${1:-$(pwd)}"
+    while true; do
+        clear
+        bash "$script" "$target" || true
+        sleep 2
+    done
+}
+
+# Launch the full Grove workspace (delegates to launch-grove.sh).
+# Usage: cmd_up [ai-editor] [path]
+cmd_up() {
+    exec "$SCRIPT_DIR/launch-grove.sh" up "$@"
+}
+
 # ─── Main Dispatch ────────────────────────────────────────────────────────────
 
 usage() {
     cat <<'EOF'
-Git Worktree Management Toolkit
+Grove — git-style worktree & AI workspace CLI
 
 Usage:
-  git-worktree.sh <command> [args]
+  grove <command> [args]        (also: git-worktree.sh <command> [args])
 
-Commands:
-  add    <branch>              Add a worktree for an existing branch
-  new    <branch>              Create a new branch + worktree
-  rm     <branch>              Remove a worktree (prompts to delete branch)
-  ls                           List all worktrees
-  prune                        Remove worktrees for merged/stale branches
-  tab                          Launch Zellij with one tab per worktree
-  tab    --layout-only         Print the generated Zellij layout (no launch)
-  cd     <branch>              Print the worktree path for a branch
-  info   [branch]              Show path, HEAD, ahead/behind, dirty status
-  diff   [branch]              git diff --stat between branch and base
-  rename <old> <new>           Rename a worktree's branch
-  lock   <path>                Lock a worktree
-  unlock <path>                Unlock a worktree
-  help                         Show this help message
+Workspace
+  up [ai-editor] [path]         Launch Zellij, one tab per worktree
+  status [path]                 Live worktree status dashboard
+  agents                        Live dashboard of running AI agents
+
+Worktrees
+  new    <branch>               Create a new branch + worktree
+  add    <branch>               Add a worktree for an existing branch
+  ls                            List all worktrees
+  rm     <branch>               Remove a worktree (prompts to delete branch)
+  cd     <branch>               Jump into a worktree (shell cwd)
+  main                          Jump into the main worktree (shell cwd)
+  which  <branch>               Print a worktree's path
+  root                          Print the main worktree path
+  run    <branch> [--] <cmd>    Run a command inside a worktree's directory
+  exec   [--] <cmd>             Run a command in EVERY worktree (fan-out)
+  sync   [branch]               Fetch + rebase the branch onto its base
+  pr     [branch]               Open (or create) the branch's GitHub PR
+  mv     <branch> <new-path>    Move a worktree to a new directory
+  log    [branch]               git log of the branch vs base
+  open   <branch>               Open a worktree in your editor ($GROVE_EDITOR)
+  info   [branch]               Show path, HEAD, ahead/behind, dirty status
+  diff   [branch]               git diff --stat between branch and base
+  rename <old> <new>            Rename a worktree's branch
+  prune                         Remove worktrees for merged/stale branches
+  lock   <path>                 Lock a worktree
+  unlock <path>                 Unlock a worktree
+  tab    [--layout-only]        Launch Zellij tabs (or print the layout)
+
+AI & navigation
+  go     <branch>               Jump to the worktree's Zellij tab (or attach)
+  agent  <branch> [ai]          Open/focus an AI agent tab for a worktree
+  agents                        Live dashboard of running AI agents
+
+Other
+  help                          Show this help message
+
+Note: 'cd' and 'main' only change your shell's cwd via the grove() shell
+function (sourced from git-worktree-aliases.sh). Run from there, not directly.
 
 Environment Variables:
-  GWT_BASE_BRANCH    Base branch for prune/diff (default: main)
+  GWT_BASE_BRANCH    Base branch for prune/diff/sync/log (default: origin/HEAD or main)
   GWT_WORKTREE_DIR   Override worktree parent directory
+  GROVE_EDITOR       Editor for 'grove open' (default: $EDITOR or code)
+  AI_EDITOR          Default AI editor for 'grove agent' (default: opencode)
 
 Examples:
-  git-worktree.sh new feature/login        # Create worktree + branch
-  git-worktree.sh add bugfix/header        # Add worktree for existing branch
-  git-worktree.sh ls                       # List all worktrees
-  git-worktree.sh tab                      # Open each worktree in its own tab
-  git-worktree.sh rm feature/login         # Remove worktree
-  git-worktree.sh prune                    # Clean up merged worktrees
-  git-worktree.sh info feature/login       # Show worktree details
-  git-worktree.sh diff feature/login       # Diff vs base branch
-  git-worktree.sh rename old-name new-name # Rename branch
-  git-worktree.sh lock /path/to/worktree   # Lock a worktree
-  git-worktree.sh unlock /path/to/worktree # Unlock a worktree
-
-Shell Aliases (add to ~/.zshrc or ~/.bashrc):
-  alias gwt='~/workspace/grove/git-worktree.sh'
-  alias gwta='gwt add'
-  alias gwtn='gwt new'
-  alias gwtrm='gwt rm'
-  alias gwtls='gwt ls'
-  alias gwtp='gwt prune'
-  alias gwtt='gwt tab'
+  grove new feat/checkout                  # branch + worktree
+  grove run feat/checkout -- npm run dev   # dev server in that worktree
+  grove exec -- git fetch                  # fan-out to all worktrees
+  grove sync feat/checkout                 # rebase onto origin/main
+  grove pr feat/checkout                   # open or create the PR
+  grove agents                             # see running agents
+  grove go feat/checkout                   # jump to that agent's tab
 EOF
 }
 
@@ -670,14 +920,26 @@ COMMAND="${1:-help}"
 shift || true
 
 case "$COMMAND" in
-    add)    cmd_add "$@" ;;
+    up)     cmd_up "$@" ;;
+    status) cmd_status "$@" ;;
+    agents) cmd_agents ;;
     new)    cmd_new "$@" ;;
+    add)    cmd_add "$@" ;;
+    ls|list) cmd_ls ;;
     rm)     cmd_rm "$@" ;;
-    ls)     cmd_ls ;;
-    list)   cmd_ls ;;
+    which|cd) cmd_which "$@" ;;
+    root)   cmd_root ;;
+    run)    cmd_run "$@" ;;
+    exec)   cmd_exec "$@" ;;
+    sync)   cmd_sync "$@" ;;
+    pr)     cmd_pr "$@" ;;
+    mv)     cmd_mv "$@" ;;
+    log)    cmd_log "$@" ;;
+    open)   cmd_open "$@" ;;
+    go)     cmd_go "$@" ;;
+    agent)  cmd_agent "$@" ;;
     prune)  cmd_prune ;;
     tab)    cmd_tab "$@" ;;
-    cd)     cmd_cd "$@" ;;
     info)   cmd_info "$@" ;;
     diff)   cmd_diff "$@" ;;
     rename) cmd_rename "$@" ;;
@@ -686,7 +948,7 @@ case "$COMMAND" in
     help|--help|-h) usage ;;
     *)
         echo "Unknown command: $COMMAND"
-        echo "Run 'git-worktree.sh help' for usage."
+        echo "Run 'grove help' for usage."
         exit 1
         ;;
 esac
