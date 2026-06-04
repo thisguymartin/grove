@@ -26,6 +26,9 @@
 #
 # Attach to an existing session later with:
 #   zellij attach grove-<reponame>
+#
+# Environment:
+#   GROVE_ZELLIJ_BAR=zjstatus|stock  Custom bar mode (default: zjstatus)
 
 set -euo pipefail
 
@@ -37,13 +40,10 @@ LAYOUT_ONLY=false
 WRITE_LAYOUT_PATH=""
 SESSION_NAME=""  # set after REPO_PATH is resolved below
 AI_EDITOR="${AI_EDITOR:-opencode}"
+GROVE_ZELLIJ_BAR="${GROVE_ZELLIJ_BAR:-zjstatus}"
 
-# Tab color palette — cycles through these for each worktree tab
-# Tab colors — cycles through these (cyan is reserved for the Overview tab)
+# Stock Zellij tab colors — cycles through these (cyan is reserved for Overview)
 TAB_COLORS=("green" "blue" "yellow" "orange")
-
-# Colored dot emoji per tab — matches TAB_COLORS cycle
-TAB_DOTS=("🟢" "🔵" "🟡" "🟠")
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -196,6 +196,110 @@ kdl_escape() {
     printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
 }
 
+resolve_zellij_bar() {
+    local script_dir="$1"
+    local zjstatus_wasm="$script_dir/vendor/zjstatus/zjstatus.wasm"
+
+    case "$GROVE_ZELLIJ_BAR" in
+        stock)
+            echo "stock"
+            ;;
+        zjstatus|"")
+            if [[ -f "$zjstatus_wasm" ]]; then
+                echo "zjstatus"
+            else
+                echo "Warning: vendored zjstatus plugin missing at $zjstatus_wasm; falling back to stock Zellij bars." >&2
+                echo "stock"
+            fi
+            ;;
+        *)
+            echo "Warning: unsupported GROVE_ZELLIJ_BAR='$GROVE_ZELLIJ_BAR'; using zjstatus when available." >&2
+            if [[ -f "$zjstatus_wasm" ]]; then
+                echo "zjstatus"
+            else
+                echo "stock"
+            fi
+            ;;
+    esac
+}
+
+generate_default_tab_template() {
+    local bar_mode="$1"
+    local esc_zjstatus_wasm="$2"
+    local esc_ai="$3"
+
+    if [[ "$bar_mode" == "zjstatus" ]]; then
+        cat <<EOF
+    default_tab_template {
+        pane size=1 borderless=true {
+            plugin location="file:$esc_zjstatus_wasm" {
+                color_bg "#10161c"
+                color_bar "#151c23"
+                color_tab "#26323d"
+                color_tab_text "#d7e0e7"
+                color_tab_dim "#8b9aa6"
+                color_green "#8fd17f"
+                color_blue "#6bb8ff"
+                color_yellow "#e1c56a"
+                color_rose "#ec8fa8"
+                color_violet "#b79cff"
+                color_cyan "#62d3c7"
+
+                format_left "{mode} #[fg=\$tab_text,bg=\$bar,bold] Grove "
+                format_center "{tabs}"
+                format_right "#[fg=\$tab_dim,bg=\$bar] ai:$esc_ai #[fg=\$cyan,bg=\$bar]{session} "
+                format_space "#[bg=\$bar] "
+                format_hide_on_overlength "true"
+                format_precedence "clr"
+
+                mode_normal "#[fg=\$bg,bg=\$green,bold] NORMAL "
+                mode_locked "#[fg=\$bg,bg=\$blue,bold] LOCKED "
+                mode_resize "#[fg=\$bg,bg=\$yellow,bold] RESIZE "
+                mode_pane "#[fg=\$bg,bg=\$cyan,bold] PANE "
+                mode_tab "#[fg=\$bg,bg=\$violet,bold] TAB "
+                mode_scroll "#[fg=\$bg,bg=\$rose,bold] SCROLL "
+                mode_enter_search "#[fg=\$bg,bg=\$rose,bold] SEARCH "
+                mode_search "#[fg=\$bg,bg=\$rose,bold] SEARCH "
+                mode_rename_tab "#[fg=\$bg,bg=\$yellow,bold] RENAME "
+                mode_rename_pane "#[fg=\$bg,bg=\$yellow,bold] RENAME "
+                mode_session "#[fg=\$bg,bg=\$violet,bold] SESSION "
+                mode_move "#[fg=\$bg,bg=\$cyan,bold] MOVE "
+                mode_prompt "#[fg=\$bg,bg=\$blue,bold] PROMPT "
+                mode_tmux "#[fg=\$bg,bg=\$yellow,bold] TMUX "
+
+                tab_normal "#[fg=\$bg,bg=\$blue,bold] {index} #[fg=\$tab_text,bg=\$tab] {name} "
+                tab_normal_fullscreen "#[fg=\$bg,bg=\$rose,bold] {index} #[fg=\$tab_text,bg=\$tab] {name}{fullscreen_indicator} "
+                tab_normal_sync "#[fg=\$bg,bg=\$cyan,bold] {index} #[fg=\$tab_text,bg=\$tab] {name}{sync_indicator} "
+                tab_active "#[fg=\$bg,bg=\$yellow,bold] {index} #[fg=\$yellow,bg=\$bar,bold] {name}{floating_indicator} "
+                tab_active_fullscreen "#[fg=\$bg,bg=\$rose,bold] {index} #[fg=\$rose,bg=\$bar,bold] {name}{fullscreen_indicator} "
+                tab_active_sync "#[fg=\$bg,bg=\$cyan,bold] {index} #[fg=\$cyan,bg=\$bar,bold] {name}{sync_indicator} "
+                tab_separator "#[fg=\$bar,bg=\$bar] "
+                tab_rename "#[fg=\$bg,bg=\$rose,bold] {index} #[fg=\$rose,bg=\$bar,bold] {name} "
+                tab_sync_indicator " <>"
+                tab_fullscreen_indicator " []"
+                tab_floating_indicator " *"
+                tab_truncate_start_format "#[fg=\$yellow,bg=\$bar] <+{count} "
+                tab_truncate_end_format "#[fg=\$yellow,bg=\$bar] +{count}> "
+            }
+        }
+        children
+    }
+EOF
+    else
+        cat <<'EOF'
+    default_tab_template {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        children
+        pane size=1 borderless=true {
+            plugin location="zellij:status-bar"
+        }
+    }
+EOF
+    fi
+}
+
 # ---------------------------------------------------------------------------
 # KDL layout generation
 # ---------------------------------------------------------------------------
@@ -203,8 +307,9 @@ generate_layout() {
     local script_dir
     script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     local template_file="$script_dir/layouts/workspace.kdl.template"
-    local esc_repo esc_script_dir
-    local tabs_file gh_panes_file
+    local esc_repo esc_script_dir esc_zjstatus_wasm
+    local tabs_file gh_panes_file tab_template_file
+    local bar_mode zjstatus_wasm
 
     if [[ ! -f "$template_file" ]]; then
         echo "Error: layout template not found at $template_file" >&2
@@ -213,9 +318,15 @@ generate_layout() {
 
     esc_repo=$(kdl_escape "$REPO_PATH")
     esc_script_dir=$(kdl_escape "$script_dir")
+    zjstatus_wasm="$script_dir/vendor/zjstatus/zjstatus.wasm"
+    esc_zjstatus_wasm=$(kdl_escape "$zjstatus_wasm")
+    bar_mode=$(resolve_zellij_bar "$script_dir")
     tabs_file=$(mktemp /tmp/grove-tabs-XXXXXXXX)
     gh_panes_file=$(mktemp /tmp/grove-gh-panes-XXXXXXXX)
-    trap 'rm -f "$tabs_file" "$gh_panes_file"' RETURN
+    tab_template_file=$(mktemp /tmp/grove-tab-template-XXXXXXXX)
+    trap 'rm -f "$tabs_file" "$gh_panes_file" "$tab_template_file"' RETURN
+
+    generate_default_tab_template "$bar_mode" "$esc_zjstatus_wasm" "$(kdl_escape "$AI_EDITOR")" > "$tab_template_file"
 
     if $HAS_GH; then
         {
@@ -243,19 +354,19 @@ generate_layout() {
 
         local color_index=$((i % ${#TAB_COLORS[@]}))
         local tab_color="${TAB_COLORS[$color_index]}"
-        local dot_index=$((i % ${#TAB_DOTS[@]}))
-        local tab_dot="${TAB_DOTS[$dot_index]}"
-
-        # Add bot emoji to non-main worktree tabs
-        local tab_prefix="${tab_dot}"
-        if [[ "$i" -gt 0 ]]; then
-            tab_prefix="${tab_dot} 🤖"
-        fi
 
         if [[ "$i" -eq 0 ]]; then
-            printf '    tab name="%s %s" color="%s" focus=true {\n' "$tab_prefix" "$esc_name" "$tab_color" >> "$tabs_file"
+            if [[ "$bar_mode" == "stock" ]]; then
+                printf '    tab name="%s" color="%s" focus=true {\n' "$esc_name" "$tab_color" >> "$tabs_file"
+            else
+                printf '    tab name="%s" focus=true {\n' "$esc_name" >> "$tabs_file"
+            fi
         else
-            printf '    tab name="%s %s" color="%s" {\n' "$tab_prefix" "$esc_name" "$tab_color" >> "$tabs_file"
+            if [[ "$bar_mode" == "stock" ]]; then
+                printf '    tab name="%s" color="%s" {\n' "$esc_name" "$tab_color" >> "$tabs_file"
+            else
+                printf '    tab name="%s" {\n' "$esc_name" >> "$tabs_file"
+            fi
         fi
 
         # THREE-COLUMN split: LazyGit (60%) | Workbench (12%) | AI Agent (28%)
@@ -293,21 +404,24 @@ generate_layout() {
         printf '    }\n\n' >> "$tabs_file"
     done
 
-    python3 - "$template_file" "$tabs_file" "$gh_panes_file" "$esc_script_dir" "$esc_repo" <<'PY'
+    python3 - "$template_file" "$tabs_file" "$gh_panes_file" "$tab_template_file" "$esc_script_dir" "$esc_repo" <<'PY'
 import pathlib
 import sys
 
 template_path = pathlib.Path(sys.argv[1])
 tabs_path = pathlib.Path(sys.argv[2])
 gh_panes_path = pathlib.Path(sys.argv[3])
-grove_dir = sys.argv[4]
-repo_path = sys.argv[5]
+tab_template_path = pathlib.Path(sys.argv[4])
+grove_dir = sys.argv[5]
+repo_path = sys.argv[6]
 
 template = template_path.read_text()
 tabs = tabs_path.read_text()
 gh_panes = gh_panes_path.read_text()
+tab_template = tab_template_path.read_text()
 rendered = template.replace("{{GROVE_INSTALL_DIR}}", grove_dir)
 rendered = rendered.replace("{{REPO_PATH}}", repo_path)
+rendered = rendered.replace("    // {{DEFAULT_TAB_TEMPLATE}}", tab_template.rstrip())
 rendered = rendered.replace("    // {{WORKTREE_TABS}}", tabs.rstrip())
 rendered = rendered.replace("                // {{GITHUB_STACK_PANES}}", gh_panes.rstrip())
 print(rendered)
