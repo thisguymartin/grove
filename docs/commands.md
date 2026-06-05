@@ -23,6 +23,7 @@ grove agents                   # Live dashboard of running AI agents
 | `grove ls` | List all worktrees |
 | `grove rm <branch>` | Remove a worktree (prompts to delete branch) |
 | `grove cd <branch>` | Jump into a worktree (changes shell cwd) |
+| `grove pick` | Pick a worktree interactively (fzf, falls back to a numbered menu), then cd into it |
 | `grove main` | Jump into the main worktree (changes shell cwd) |
 | `grove which <branch>` | Print a worktree's path |
 | `grove root` | Print the main worktree path |
@@ -40,9 +41,11 @@ grove agents                   # Live dashboard of running AI agents
 | `grove lock <path>` / `grove unlock <path>` | Lock / unlock a worktree |
 | `grove tab [--layout-only]` | Launch Zellij tabs (or print the layout) |
 
-> `grove cd` and `grove main` change the **calling shell's** cwd, so they run inside the
-> `grove()` shell function (sourced from `git-worktree-aliases.sh`). A subprocess can't
-> `cd` for you — that's why these two are special-cased.
+> `grove cd`, `grove pick`, and `grove main` change the **calling shell's** cwd, so they run
+> inside the `grove()` shell function (sourced from `git-worktree-aliases.sh`). A subprocess
+> can't `cd` for you — that's why these are special-cased. `grove pick` lists each worktree
+> with the **branch name in color** followed by its **path**; running `grove pick` (the raw
+> subcommand) just prints the chosen path.
 
 ## AI & navigation
 

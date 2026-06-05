@@ -390,6 +390,14 @@ grove() {
             echo "Changing to main worktree: $root_path"
             cd "$root_path" || return 1
             ;;
+        pick)
+            # Interactive picker draws on the tty; capture the chosen path and cd.
+            local picked
+            picked=$(bash "$toolkit" pick) || return 1
+            [[ -n "$picked" ]] || return 1
+            echo "Changing to worktree: $picked"
+            cd "$picked" || return 1
+            ;;
         *)
             bash "$launcher" "$@"
             ;;

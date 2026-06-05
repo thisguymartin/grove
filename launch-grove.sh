@@ -36,6 +36,7 @@ Worktrees
   grove ls                       List all worktrees
   grove rm <branch>              Remove a worktree (prompts to delete branch)
   grove cd <branch>              Jump into a worktree (shell cwd)
+  grove pick                     Pick a worktree interactively, then cd into it
   grove main                     Jump into the main worktree (shell cwd)
   grove which <branch>           Print a worktree's path
   grove root                     Print the main worktree path
@@ -85,7 +86,7 @@ is_ai_editor() {
 # Worktree / AI verbs that are delegated to git-worktree.sh.
 is_worktree_verb() {
     case "$1" in
-        new|add|ls|list|rm|which|root|run|exec|sync|pr|mv|log|open|go|agent|agents|status|info|diff|rename|prune|tab|lock|unlock|cd) return 0 ;;
+        new|add|ls|list|rm|which|root|pick|run|exec|sync|pr|mv|log|open|go|agent|agents|status|info|diff|rename|prune|tab|lock|unlock|cd) return 0 ;;
         *) return 1 ;;
     esac
 }
