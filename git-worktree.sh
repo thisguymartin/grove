@@ -530,6 +530,82 @@ cmd_root() {
     git worktree list --porcelain | awk '/^worktree / { print substr($0, 10); exit }'
 }
 
+# Interactive worktree picker. Lists every worktree with the branch name in
+# color followed by its path, lets the user choose one (fzf when available,
+# else a numbered menu), and prints ONLY the chosen path to stdout. The
+# `grove()` shell function captures that path and runs `cd` itself — a
+# subprocess can't change the parent shell's cwd. All UI is drawn on the
+# tty/stderr so the captured stdout stays a single clean path.
+cmd_pick() {
+    # branch<TAB>path rows (same porcelain parse as cmd_ls)
+    local rows
+    rows=$(git worktree list --porcelain | awk '
+        /^worktree / { wt = substr($0, 10) }
+        /^branch /   { br = substr($0, 8); sub(/^refs\/heads\//, "", br) }
+        $1 == "detached" { br = "(detached)" }
+        $1 == "locked"   { locked = " [locked]" }
+        /^$/ {
+            if (wt != "") printf "%s%s\t%s\n", br, locked, wt
+            wt = br = locked = ""
+        }
+        END { if (wt != "") printf "%s%s\t%s\n", br, locked, wt }
+    ')
+
+    if [[ -z "$rows" ]]; then
+        echo "No worktrees found." >&2
+        exit 1
+    fi
+
+    # Colors — skip when stderr is not a terminal or NO_COLOR is set.
+    local CYAN='' DIM='' RESET=''
+    if [[ -t 2 && -z "${NO_COLOR:-}" ]]; then
+        CYAN=$'\033[1;36m'; DIM=$'\033[2m'; RESET=$'\033[0m'
+    fi
+
+    if command -v fzf >/dev/null 2>&1; then
+        # Display = colored branch + dim path (field 1); a clean path is carried
+        # in a tab-delimited field 2 that fzf hides but returns on selection.
+        local selected
+        selected=$(
+            printf '%s\n' "$rows" \
+            | awk -F'\t' -v c="$CYAN" -v d="$DIM" -v r="$RESET" \
+                '{ printf "%s%-32s%s %s%s%s\t%s\n", c, $1, r, d, $2, r, $2 }' \
+            | fzf --ansi --with-nth=1 --delimiter=$'\t' \
+                  --prompt='worktree> ' \
+                  --header='Select worktree (Enter to cd, Esc to cancel)'
+        ) || exit 1
+        [[ -n "$selected" ]] || exit 1
+        printf '%s\n' "$selected" | awk -F'\t' '{ print $NF }'
+    else
+        # Numbered-menu fallback — all UI on stderr, chosen path on stdout.
+        local -a paths=() branches=()
+        local br wt
+        while IFS=$'\t' read -r br wt; do
+            [[ -n "$wt" ]] || continue
+            branches+=("$br"); paths+=("$wt")
+        done <<< "$rows"
+
+        echo "Select a worktree:" >&2
+        local i
+        for i in "${!paths[@]}"; do
+            printf '  %s%2d%s) %s%-32s%s %s%s%s\n' \
+                "$CYAN" "$((i + 1))" "$RESET" \
+                "$CYAN" "${branches[$i]}" "$RESET" \
+                "$DIM" "${paths[$i]}" "$RESET" >&2
+        done
+
+        local choice
+        read -r -p "#? " choice </dev/tty || exit 1
+        [[ "$choice" =~ ^[0-9]+$ ]] || { echo "Invalid selection." >&2; exit 1; }
+        local idx=$((choice - 1))
+        if (( idx < 0 || idx >= ${#paths[@]} )); then
+            echo "Selection out of range." >&2
+            exit 1
+        fi
+        printf '%s\n' "${paths[$idx]}"
+    fi
+}
+
 cmd_info() {
     local branch="${1:-$(git symbolic-ref --short HEAD 2>/dev/null)}"
     if [[ -z "$branch" ]]; then
@@ -928,6 +1004,7 @@ case "$COMMAND" in
     ls|list) cmd_ls ;;
     rm)     cmd_rm "$@" ;;
     which|cd) cmd_which "$@" ;;
+    pick)   cmd_pick ;;
     root)   cmd_root ;;
     run)    cmd_run "$@" ;;
     exec)   cmd_exec "$@" ;;
