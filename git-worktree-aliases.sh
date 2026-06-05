@@ -406,3 +406,34 @@ zj-kill() {
     zellij delete-all-sessions 2>/dev/null || true
     echo "Done."
 }
+
+# ---------------------------------------------------------------------------
+# grove completion — tab-suggest subcommands (bash + zsh)
+# Usage: type `grove o<TAB>` -> `grove opencode`, `grove wt <TAB>` -> subcommands
+# ---------------------------------------------------------------------------
+_grove_complete() {
+    local cur prev
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+    if [[ "$prev" == "wt" || "$prev" == "worktree" ]]; then
+        COMPREPLY=( $(compgen -W "add new rm ls prune info diff rename lock unlock" -- "$cur") )
+        return
+    fi
+
+    if [[ "$COMP_CWORD" -eq 1 ]]; then
+        COMPREPLY=( $(compgen -W "claude gemini opencode codex wt worktree --help -h" -- "$cur") )
+        return
+    fi
+
+    # fall back to directory completion for the [path] arg
+    COMPREPLY=( $(compgen -d -- "$cur") )
+}
+
+# zsh needs bashcompinit before `complete -F` works; bash needs nothing extra
+if [[ -n "${ZSH_VERSION:-}" ]]; then
+    autoload -U +X bashcompinit 2>/dev/null && bashcompinit 2>/dev/null
+fi
+if [[ -n "${BASH_VERSION:-}" || -n "${ZSH_VERSION:-}" ]]; then
+    complete -F _grove_complete grove 2>/dev/null
+fi
