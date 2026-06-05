@@ -432,3 +432,15 @@ function zj-kill
     zellij delete-all-sessions 2>/dev/null; or true
     echo "Done."
 end
+
+# ---------------------------------------------------------------------------
+# grove completion — tab-suggest subcommands
+# ---------------------------------------------------------------------------
+complete -c grove -f
+complete -c grove -n "__fish_use_subcommand" -a "claude" -d "Use Claude"
+complete -c grove -n "__fish_use_subcommand" -a "gemini" -d "Use Gemini"
+complete -c grove -n "__fish_use_subcommand" -a "opencode" -d "Use OpenCode"
+complete -c grove -n "__fish_use_subcommand" -a "codex" -d "Use Codex"
+complete -c grove -n "__fish_use_subcommand" -a "wt worktree" -d "Worktree commands"
+complete -c grove -n "__fish_seen_subcommand_from wt worktree" \
+    -a "add new rm ls prune info diff rename lock unlock"
