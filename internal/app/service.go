@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/thisguymartin/grove/internal/domain/workspace"
 )
@@ -32,17 +33,17 @@ func (s *Service) Status(ctx context.Context, path string) (workspace.Workspace,
 
 	root, err := s.git.Root(ctx, path)
 	if err != nil {
-		return workspace.Workspace{}, err
+		return workspace.Workspace{}, fmt.Errorf("resolve repo root: %w", err)
 	}
 
 	base, err := s.git.BaseBranch(ctx, root)
 	if err != nil {
-		return workspace.Workspace{}, err
+		return workspace.Workspace{}, fmt.Errorf("resolve base branch: %w", err)
 	}
 
 	worktrees, err := s.git.Worktrees(ctx, root)
 	if err != nil {
-		return workspace.Workspace{}, err
+		return workspace.Workspace{}, fmt.Errorf("list worktrees: %w", err)
 	}
 
 	return workspace.Workspace{
