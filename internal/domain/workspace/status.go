@@ -58,7 +58,7 @@ func scoreStatus(status WorktreeStatus) NextAction {
 		return NextAction{Branch: branch, Kind: NextActionOpenDiff, Label: "review dirty files", Score: 400}
 	case status.Behind > 0:
 		return NextAction{Branch: branch, Kind: NextActionSync, Label: "sync with base", Score: 300}
-	case branch != "main" && branch != "" && !status.HasPR:
+	case !status.HasPR:
 		return NextAction{Branch: branch, Kind: NextActionCreatePR, Label: "create pull request", Score: 200}
 	default:
 		return NextAction{Branch: branch, Kind: NextActionIdle, Label: "idle", Score: 0}

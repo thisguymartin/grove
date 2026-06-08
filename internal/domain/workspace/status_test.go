@@ -7,7 +7,7 @@ func TestScoreNextActionPriority(t *testing.T) {
 		{Worktree: Worktree{Branch: "docs/spec"}, DirtyFiles: 2},
 		{Worktree: Worktree{Branch: "fix/install"}, Checks: CheckStateFailed},
 		{Worktree: Worktree{Branch: "feat/go-tui"}, Behind: 3},
-		{Worktree: Worktree{Branch: "main"}, Clean: true},
+		{Worktree: Worktree{Branch: "main"}, Clean: true, HasPR: true},
 	}
 
 	got := ScoreNextActions(input)
@@ -25,5 +25,30 @@ func TestScoreNextActionPriority(t *testing.T) {
 	}
 	if got[3].Kind != NextActionIdle {
 		t.Fatalf("last action = %#v, want idle", got[3])
+	}
+}
+
+func TestScoreNextActionCreatePRUsesHasPRState(t *testing.T) {
+	tests := []struct {
+		name   string
+		branch BranchName
+	}{
+		{name: "base named branch", branch: "main"},
+		{name: "empty branch", branch: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ScoreNextActions([]WorktreeStatus{
+				{Worktree: Worktree{Branch: tt.branch}, Clean: true, HasPR: false},
+			})
+
+			if len(got) != 1 {
+				t.Fatalf("len(actions) = %d, want 1", len(got))
+			}
+			if got[0].Kind != NextActionCreatePR {
+				t.Fatalf("action = %#v, want create PR", got[0])
+			}
+		})
 	}
 }
