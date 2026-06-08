@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/thisguymartin/grove/internal/domain/agent"
+	"github.com/thisguymartin/grove/internal/domain/review"
 	"github.com/thisguymartin/grove/internal/domain/workspace"
 )
 
@@ -14,16 +16,32 @@ type GitClient interface {
 	Worktrees(context.Context, workspace.RepoRoot) ([]workspace.Worktree, error)
 }
 
+type Reviews interface {
+	PullRequests(context.Context, workspace.RepoRoot) ([]review.PullRequest, error)
+}
+
+type Agents interface {
+	Sessions(context.Context) ([]agent.Session, error)
+}
+
 type ServiceConfig struct {
-	Git GitClient
+	Git     GitClient
+	Reviews Reviews
+	Agents  Agents
 }
 
 type Service struct {
-	git GitClient
+	git     GitClient
+	reviews Reviews
+	agents  Agents
 }
 
 func NewService(cfg ServiceConfig) *Service {
-	return &Service{git: cfg.Git}
+	return &Service{
+		git:     cfg.Git,
+		reviews: cfg.Reviews,
+		agents:  cfg.Agents,
+	}
 }
 
 func (s *Service) Status(ctx context.Context, path string) (workspace.Workspace, error) {
@@ -46,12 +64,31 @@ func (s *Service) Status(ctx context.Context, path string) (workspace.Workspace,
 		return workspace.Workspace{}, fmt.Errorf("list worktrees: %w", err)
 	}
 
+	var prs []review.PullRequest
+	if s.reviews != nil {
+		var err error
+		prs, err = s.reviews.PullRequests(ctx, root)
+		if err != nil {
+			if !isOptionalToolUnavailable(err) {
+				return workspace.Workspace{}, fmt.Errorf("load pull requests: %w", err)
+			}
+			prs = nil
+		}
+	}
+
+	if s.agents != nil {
+		if _, err := s.agents.Sessions(ctx); err != nil {
+			return workspace.Workspace{}, fmt.Errorf("load agent sessions: %w", err)
+		}
+	}
+
+	prBranches := pullRequestBranches(prs)
 	statuses := make([]workspace.WorktreeStatus, 0, len(worktrees))
 	for _, worktree := range worktrees {
 		statuses = append(statuses, workspace.WorktreeStatus{
 			Worktree: worktree,
 			Clean:    true,
-			HasPR:    baselineHasPR(worktree, base),
+			HasPR:    hasPullRequest(worktree, base, prBranches),
 			Checks:   workspace.CheckStateUnknown,
 		})
 	}
@@ -68,4 +105,32 @@ func (s *Service) Status(ctx context.Context, path string) (workspace.Workspace,
 func baselineHasPR(worktree workspace.Worktree, base workspace.BranchName) bool {
 	// Until PR metadata lands, treat branchless and bare worktrees as PR-ineligible.
 	return worktree.Branch == base || worktree.Branch == "" || worktree.Bare
+}
+
+func hasPullRequest(worktree workspace.Worktree, base workspace.BranchName, prBranches map[workspace.BranchName]struct{}) bool {
+	if baselineHasPR(worktree, base) {
+		return true
+	}
+
+	_, ok := prBranches[worktree.Branch]
+	return ok
+}
+
+func pullRequestBranches(prs []review.PullRequest) map[workspace.BranchName]struct{} {
+	branches := make(map[workspace.BranchName]struct{}, len(prs))
+	for _, pr := range prs {
+		if pr.Branch != "" {
+			branches[workspace.BranchName(pr.Branch)] = struct{}{}
+		}
+	}
+	return branches
+}
+
+type optionalToolUnavailable interface {
+	OptionalToolUnavailable() bool
+}
+
+func isOptionalToolUnavailable(err error) bool {
+	var unavailable optionalToolUnavailable
+	return errors.As(err, &unavailable) && unavailable.OptionalToolUnavailable()
 }

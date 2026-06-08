@@ -6,6 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	githubadapter "github.com/thisguymartin/grove/internal/adapters/github"
+	"github.com/thisguymartin/grove/internal/domain/agent"
+	"github.com/thisguymartin/grove/internal/domain/review"
 	"github.com/thisguymartin/grove/internal/domain/workspace"
 )
 
@@ -37,6 +40,34 @@ func (f fakeGit) Worktrees(context.Context, workspace.RepoRoot) ([]workspace.Wor
 		return nil, f.treeErr
 	}
 	return f.worktrees, nil
+}
+
+type fakeReviews struct {
+	prs        []review.PullRequest
+	err        error
+	calledRoot workspace.RepoRoot
+}
+
+func (f *fakeReviews) PullRequests(_ context.Context, root workspace.RepoRoot) ([]review.PullRequest, error) {
+	f.calledRoot = root
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.prs, nil
+}
+
+type fakeAgents struct {
+	sessions []agent.Session
+	err      error
+	called   bool
+}
+
+func (f *fakeAgents) Sessions(context.Context) ([]agent.Session, error) {
+	f.called = true
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.sessions, nil
 }
 
 func TestServiceStatusBuildsWorkspace(t *testing.T) {
@@ -126,6 +157,136 @@ func TestServiceStatusMarksBranchlessAndBareWorktreesPRIneligible(t *testing.T) 
 	if createPRActions[0].Branch != "feat/go-tui" {
 		t.Fatalf("create PR action = %#v, want feat/go-tui", createPRActions[0])
 	}
+}
+
+func TestServiceStatusEnrichesPullRequestBranches(t *testing.T) {
+	reviews := &fakeReviews{
+		prs: []review.PullRequest{
+			{Branch: "feat/with-pr", Number: 17, URL: "https://github.com/thisguymartin/grove/pull/17", State: "OPEN"},
+		},
+	}
+	agents := &fakeAgents{
+		sessions: []agent.Session{
+			{PID: 1234, Editor: "codex", Command: "codex"},
+		},
+	}
+	svc := NewService(ServiceConfig{
+		Git: fakeGit{
+			root: "/repo/grove",
+			base: "main",
+			worktrees: []workspace.Worktree{
+				{Path: "/repo/grove", Branch: "main", Head: "abc"},
+				{Path: "/repo/.worktrees/feat-with-pr", Branch: "feat/with-pr", Head: "def"},
+				{Path: "/repo/.worktrees/feat-no-pr", Branch: "feat/no-pr", Head: "fed"},
+				{Path: "/repo/.worktrees/detached", Head: "1234567"},
+				{Path: "/repo/.git/worktrees/bare", Head: "7654321", Bare: true},
+			},
+		},
+		Reviews: reviews,
+		Agents:  agents,
+	})
+
+	got, err := svc.Status(context.Background(), "/repo/grove")
+	if err != nil {
+		t.Fatalf("Status returned error: %v", err)
+	}
+
+	if reviews.calledRoot != "/repo/grove" {
+		t.Fatalf("PullRequests called with root %q, want /repo/grove", reviews.calledRoot)
+	}
+	if !agents.called {
+		t.Fatal("Sessions was not called")
+	}
+
+	statusesByPath := make(map[workspace.WorktreePath]workspace.WorktreeStatus, len(got.Statuses))
+	for _, status := range got.Statuses {
+		statusesByPath[status.Worktree.Path] = status
+		if status.Checks != workspace.CheckStateUnknown {
+			t.Fatalf("status[%q].Checks = %q, want unknown", status.Worktree.Path, status.Checks)
+		}
+	}
+
+	assertHasPR(t, statusesByPath, "/repo/grove", true)
+	assertHasPR(t, statusesByPath, "/repo/.worktrees/feat-with-pr", true)
+	assertHasPR(t, statusesByPath, "/repo/.worktrees/feat-no-pr", false)
+	assertHasPR(t, statusesByPath, "/repo/.worktrees/detached", true)
+	assertHasPR(t, statusesByPath, "/repo/.git/worktrees/bare", true)
+
+	createPRActions := make([]workspace.NextAction, 0, len(got.NextActions))
+	for _, action := range got.NextActions {
+		if action.Kind == workspace.NextActionCreatePR {
+			createPRActions = append(createPRActions, action)
+		}
+	}
+	if len(createPRActions) != 1 {
+		t.Fatalf("create PR actions = %#v, want only feat/no-pr", createPRActions)
+	}
+	if createPRActions[0].Branch != "feat/no-pr" {
+		t.Fatalf("create PR action = %#v, want feat/no-pr", createPRActions[0])
+	}
+}
+
+func TestServiceStatusDegradesWhenPullRequestsUnavailable(t *testing.T) {
+	svc := NewService(ServiceConfig{
+		Git: fakeGit{
+			root: "/repo/grove",
+			base: "main",
+			worktrees: []workspace.Worktree{
+				{Path: "/repo/grove", Branch: "main", Head: "abc"},
+				{Path: "/repo/.worktrees/feat-go-tui", Branch: "feat/go-tui", Head: "def"},
+			},
+		},
+		Reviews: &fakeReviews{err: githubadapter.UnavailableError{Tool: "gh"}},
+	})
+
+	got, err := svc.Status(context.Background(), "/repo/grove")
+	if err != nil {
+		t.Fatalf("Status returned error: %v", err)
+	}
+
+	statusesByPath := make(map[workspace.WorktreePath]workspace.WorktreeStatus, len(got.Statuses))
+	for _, status := range got.Statuses {
+		statusesByPath[status.Worktree.Path] = status
+	}
+	assertHasPR(t, statusesByPath, "/repo/grove", true)
+	assertHasPR(t, statusesByPath, "/repo/.worktrees/feat-go-tui", false)
+	if statusesByPath["/repo/.worktrees/feat-go-tui"].Checks != workspace.CheckStateUnknown {
+		t.Fatalf("feature Checks = %q, want unknown", statusesByPath["/repo/.worktrees/feat-go-tui"].Checks)
+	}
+}
+
+func TestServiceStatusWrapsPullRequestErrors(t *testing.T) {
+	wantErr := errors.New("gh api failed")
+	svc := NewService(ServiceConfig{
+		Git: fakeGit{
+			root: "/repo/grove",
+			base: "main",
+			worktrees: []workspace.Worktree{
+				{Path: "/repo/grove", Branch: "main", Head: "abc"},
+			},
+		},
+		Reviews: &fakeReviews{err: wantErr},
+	})
+
+	_, err := svc.Status(context.Background(), "/repo/grove")
+	assertWrappedError(t, err, "load pull requests", wantErr)
+}
+
+func TestServiceStatusWrapsAgentErrors(t *testing.T) {
+	wantErr := errors.New("ps failed")
+	svc := NewService(ServiceConfig{
+		Git: fakeGit{
+			root: "/repo/grove",
+			base: "main",
+			worktrees: []workspace.Worktree{
+				{Path: "/repo/grove", Branch: "main", Head: "abc"},
+			},
+		},
+		Agents: &fakeAgents{err: wantErr},
+	})
+
+	_, err := svc.Status(context.Background(), "/repo/grove")
+	assertWrappedError(t, err, "load agent sessions", wantErr)
 }
 
 func TestServiceStatusRequiresGitClient(t *testing.T) {
