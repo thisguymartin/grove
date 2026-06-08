@@ -51,6 +51,60 @@ func TestParseWorktreePorcelain(t *testing.T) {
 	}
 }
 
+func TestParseWorktreePorcelainBareRecord(t *testing.T) {
+	got, err := ParseWorktreePorcelain("worktree /path/to/bare-source\nbare\n")
+	if err != nil {
+		t.Fatalf("ParseWorktreePorcelain returned error: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("len(worktrees) = %d, want 1", len(got))
+	}
+
+	wt := got[0]
+	if string(wt.Path) != "/path/to/bare-source" {
+		t.Fatalf("worktree[0].Path = %q, want %q", wt.Path, "/path/to/bare-source")
+	}
+	if !wt.Bare {
+		t.Fatalf("worktree[0].Bare = false, want true")
+	}
+	if wt.Head != "" {
+		t.Fatalf("worktree[0].Head = %q, want empty", wt.Head)
+	}
+	if wt.Branch != "" {
+		t.Fatalf("worktree[0].Branch = %q, want empty", wt.Branch)
+	}
+}
+
+func TestParseWorktreePorcelainBareAndLinkedRecords(t *testing.T) {
+	got, err := ParseWorktreePorcelain(strings.Join([]string{
+		"worktree /path/to/bare-source",
+		"bare",
+		"",
+		"worktree /path/to/linked-worktree",
+		"HEAD abcd1234abcd1234abcd1234abcd1234abcd1234",
+		"branch refs/heads/main",
+		"",
+	}, "\n"))
+	if err != nil {
+		t.Fatalf("ParseWorktreePorcelain returned error: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("len(worktrees) = %d, want 2", len(got))
+	}
+	if !got[0].Bare {
+		t.Fatalf("worktree[0].Bare = false, want true")
+	}
+	if got[1].Bare {
+		t.Fatalf("worktree[1].Bare = true, want false")
+	}
+	if got[1].Head != "abcd1234abcd1234abcd1234abcd1234abcd1234" {
+		t.Fatalf("worktree[1].Head = %q, want %q", got[1].Head, "abcd1234abcd1234abcd1234abcd1234abcd1234")
+	}
+	if got[1].Branch != "main" {
+		t.Fatalf("worktree[1].Branch = %q, want %q", got[1].Branch, "main")
+	}
+}
+
 func TestParseWorktreePorcelainMalformedInput(t *testing.T) {
 	tests := []struct {
 		name string
@@ -76,6 +130,31 @@ func TestParseWorktreePorcelainMalformedInput(t *testing.T) {
 			name: "record missing HEAD",
 			in:   "worktree /repo/grove\nbranch refs/heads/main\n",
 			want: "line 1: missing HEAD",
+		},
+		{
+			name: "HEAD before worktree",
+			in:   "HEAD abc\n",
+			want: "line 1: HEAD before worktree",
+		},
+		{
+			name: "branch before worktree",
+			in:   "branch refs/heads/main\n",
+			want: "line 1: branch before worktree",
+		},
+		{
+			name: "detached before worktree",
+			in:   "detached\n",
+			want: "line 1: detached before worktree",
+		},
+		{
+			name: "locked before worktree",
+			in:   "locked\n",
+			want: "line 1: locked before worktree",
+		},
+		{
+			name: "bare before worktree",
+			in:   "bare\n",
+			want: "line 1: bare before worktree",
 		},
 	}
 

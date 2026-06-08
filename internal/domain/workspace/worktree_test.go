@@ -14,6 +14,11 @@ func TestWorktreeDisplayName(t *testing.T) {
 			want: "feat/go-tui",
 		},
 		{
+			name: "uses bare label when bare",
+			in:   Worktree{Bare: true},
+			want: "bare",
+		},
+		{
 			name: "truncates detached SHA",
 			in:   Worktree{Head: "3333333333333333333333333333333333333333"},
 			want: "detached@3333333",
