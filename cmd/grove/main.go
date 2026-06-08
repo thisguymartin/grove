@@ -9,10 +9,25 @@ import (
 	"strings"
 
 	"github.com/thisguymartin/grove/internal/adapters/git"
+	"github.com/thisguymartin/grove/internal/adapters/github"
+	"github.com/thisguymartin/grove/internal/adapters/process"
 	"github.com/thisguymartin/grove/internal/app"
+	"github.com/thisguymartin/grove/internal/domain/workspace"
 )
 
 var version = "0.1.0-dev"
+
+type statusService interface {
+	Status(context.Context, string) (workspace.Workspace, error)
+}
+
+var newStatusService = func() statusService {
+	return app.NewService(app.ServiceConfig{
+		Git:     git.NewClient(nil),
+		Reviews: github.NewClient(nil),
+		Agents:  process.NewClient(nil),
+	})
+}
 
 func main() {
 	os.Exit(run(context.Background(), os.Args[1:], os.Stdout, os.Stderr))
@@ -53,9 +68,7 @@ func runStatus(ctx context.Context, args []string, stdout io.Writer, stderr io.W
 		return 2
 	}
 
-	svc := app.NewService(app.ServiceConfig{
-		Git: git.NewClient(nil),
-	})
+	svc := newStatusService()
 	snapshot, err := svc.Status(ctx, ".")
 	if err != nil {
 		fmt.Fprintln(stderr, err)
