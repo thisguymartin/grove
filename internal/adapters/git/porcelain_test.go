@@ -2,6 +2,7 @@ package git
 
 import (
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -47,5 +48,46 @@ func TestParseWorktreePorcelain(t *testing.T) {
 		if wt.Locked != tt.locked {
 			t.Fatalf("worktree[%d].Locked = %v, want %v", tt.index, wt.Locked, tt.locked)
 		}
+	}
+}
+
+func TestParseWorktreePorcelainMalformedInput(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "worktree missing value",
+			in:   "worktree\n",
+			want: "line 1: worktree requires a value",
+		},
+		{
+			name: "HEAD missing value",
+			in:   "worktree /repo/grove\nHEAD\n",
+			want: "line 2: HEAD requires a value",
+		},
+		{
+			name: "branch missing value",
+			in:   "worktree /repo/grove\nHEAD 1111111111111111111111111111111111111111\nbranch\n",
+			want: "line 3: branch requires a value",
+		},
+		{
+			name: "record missing HEAD",
+			in:   "worktree /repo/grove\nbranch refs/heads/main\n",
+			want: "line 1: missing HEAD",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ParseWorktreePorcelain(tt.in)
+			if err == nil {
+				t.Fatalf("ParseWorktreePorcelain returned nil error, want %q", tt.want)
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("ParseWorktreePorcelain error = %q, want containing %q", err.Error(), tt.want)
+			}
+		})
 	}
 }
