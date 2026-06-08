@@ -85,6 +85,49 @@ func TestServiceStatusBuildsWorkspace(t *testing.T) {
 	}
 }
 
+func TestServiceStatusMarksBranchlessAndBareWorktreesPRIneligible(t *testing.T) {
+	svc := NewService(ServiceConfig{
+		Git: fakeGit{
+			root: "/repo/grove",
+			base: "main",
+			worktrees: []workspace.Worktree{
+				{Path: "/repo/grove", Branch: "main", Head: "abc"},
+				{Path: "/repo/.worktrees/feat-go-tui", Branch: "feat/go-tui", Head: "def"},
+				{Path: "/repo/.worktrees/detached", Head: "1234567"},
+				{Path: "/repo/.git/worktrees/bare", Head: "7654321", Bare: true},
+			},
+		},
+	})
+
+	got, err := svc.Status(context.Background(), "/repo/grove")
+	if err != nil {
+		t.Fatalf("Status returned error: %v", err)
+	}
+
+	statusesByPath := make(map[workspace.WorktreePath]workspace.WorktreeStatus, len(got.Statuses))
+	for _, status := range got.Statuses {
+		statusesByPath[status.Worktree.Path] = status
+	}
+
+	assertHasPR(t, statusesByPath, "/repo/grove", true)
+	assertHasPR(t, statusesByPath, "/repo/.worktrees/feat-go-tui", false)
+	assertHasPR(t, statusesByPath, "/repo/.worktrees/detached", true)
+	assertHasPR(t, statusesByPath, "/repo/.git/worktrees/bare", true)
+
+	createPRActions := make([]workspace.NextAction, 0, len(got.NextActions))
+	for _, action := range got.NextActions {
+		if action.Kind == workspace.NextActionCreatePR {
+			createPRActions = append(createPRActions, action)
+		}
+	}
+	if len(createPRActions) != 1 {
+		t.Fatalf("create PR actions = %#v, want only feat/go-tui", createPRActions)
+	}
+	if createPRActions[0].Branch != "feat/go-tui" {
+		t.Fatalf("create PR action = %#v, want feat/go-tui", createPRActions[0])
+	}
+}
+
 func TestServiceStatusRequiresGitClient(t *testing.T) {
 	svc := NewService(ServiceConfig{})
 
@@ -132,6 +175,18 @@ func TestServiceStatusWrapsWorktreesError(t *testing.T) {
 
 	_, err := svc.Status(context.Background(), "/repo/grove")
 	assertWrappedError(t, err, "list worktrees", wantErr)
+}
+
+func assertHasPR(t *testing.T, statuses map[workspace.WorktreePath]workspace.WorktreeStatus, path workspace.WorktreePath, want bool) {
+	t.Helper()
+
+	status, ok := statuses[path]
+	if !ok {
+		t.Fatalf("missing status for path %q", path)
+	}
+	if status.HasPR != want {
+		t.Fatalf("status[%q].HasPR = %v, want %v; status=%#v", path, status.HasPR, want, status)
+	}
 }
 
 func assertWrappedError(t *testing.T, err error, phase string, target error) {

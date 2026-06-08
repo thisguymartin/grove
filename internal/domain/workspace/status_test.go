@@ -52,3 +52,17 @@ func TestScoreNextActionCreatePRUsesHasPRState(t *testing.T) {
 		})
 	}
 }
+
+func TestScoreNextActionsBreaksTiesByBranch(t *testing.T) {
+	got := ScoreNextActions([]WorktreeStatus{
+		{Worktree: Worktree{Path: "/repo/.worktrees/zeta", Branch: "zeta"}, Clean: true, HasPR: false},
+		{Worktree: Worktree{Path: "/repo/.worktrees/alpha", Branch: "alpha"}, Clean: true, HasPR: false},
+	})
+
+	if len(got) != 2 {
+		t.Fatalf("len(actions) = %d, want 2", len(got))
+	}
+	if got[0].Branch != "alpha" || got[1].Branch != "zeta" {
+		t.Fatalf("actions = %#v, want alpha before zeta", got)
+	}
+}

@@ -39,13 +39,32 @@ type NextAction struct {
 }
 
 func ScoreNextActions(statuses []WorktreeStatus) []NextAction {
-	out := make([]NextAction, 0, len(statuses))
-	for _, status := range statuses {
-		out = append(out, scoreStatus(status))
+	type scoredAction struct {
+		action NextAction
+		path   WorktreePath
 	}
-	sort.SliceStable(out, func(i, j int) bool {
-		return out[i].Score > out[j].Score
+
+	scored := make([]scoredAction, 0, len(statuses))
+	for _, status := range statuses {
+		scored = append(scored, scoredAction{
+			action: scoreStatus(status),
+			path:   status.Worktree.Path,
+		})
+	}
+	sort.SliceStable(scored, func(i, j int) bool {
+		if scored[i].action.Score != scored[j].action.Score {
+			return scored[i].action.Score > scored[j].action.Score
+		}
+		if scored[i].action.Branch != scored[j].action.Branch {
+			return scored[i].action.Branch < scored[j].action.Branch
+		}
+		return scored[i].path < scored[j].path
 	})
+
+	out := make([]NextAction, 0, len(scored))
+	for _, item := range scored {
+		out = append(out, item.action)
+	}
 	return out
 }
 

@@ -3,8 +3,11 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/thisguymartin/grove/internal/domain/workspace"
 )
 
 func TestRunHelpPrintsUsage(t *testing.T) {
@@ -67,10 +70,23 @@ func TestRunStatusJSONPrintsSnapshot(t *testing.T) {
 		t.Fatalf("status --json exit code = %d, want 0; stderr=%q", code, stderr.String())
 	}
 
-	output := stdout.String()
-	for _, want := range []string{`"root"`, `"worktrees"`, `"next_actions"`} {
-		if !strings.Contains(output, want) {
-			t.Fatalf("json output missing %q:\n%s", want, output)
+	output := stdout.Bytes()
+	var snapshot workspace.Workspace
+	if err := json.NewDecoder(bytes.NewReader(output)).Decode(&snapshot); err != nil {
+		t.Fatalf("status --json output is not workspace JSON: %v\n%s", err, string(output))
+	}
+	if snapshot.Root == "" {
+		t.Fatalf("Root is empty in snapshot: %#v", snapshot)
+	}
+	if len(snapshot.Statuses) != len(snapshot.Worktrees) {
+		t.Fatalf("len(Statuses) = %d, want len(Worktrees) %d", len(snapshot.Statuses), len(snapshot.Worktrees))
+	}
+	if len(snapshot.NextActions) != len(snapshot.Statuses) {
+		t.Fatalf("len(NextActions) = %d, want len(Statuses) %d", len(snapshot.NextActions), len(snapshot.Statuses))
+	}
+	for _, action := range snapshot.NextActions {
+		if action.Kind == "" {
+			t.Fatalf("next action has empty kind: %#v", action)
 		}
 	}
 }

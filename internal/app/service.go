@@ -51,7 +51,7 @@ func (s *Service) Status(ctx context.Context, path string) (workspace.Workspace,
 		statuses = append(statuses, workspace.WorktreeStatus{
 			Worktree: worktree,
 			Clean:    true,
-			HasPR:    worktree.Branch == base,
+			HasPR:    baselineHasPR(worktree, base),
 			Checks:   workspace.CheckStateUnknown,
 		})
 	}
@@ -63,4 +63,9 @@ func (s *Service) Status(ctx context.Context, path string) (workspace.Workspace,
 		Statuses:    statuses,
 		NextActions: workspace.ScoreNextActions(statuses),
 	}, nil
+}
+
+func baselineHasPR(worktree workspace.Worktree, base workspace.BranchName) bool {
+	// Until PR metadata lands, treat branchless and bare worktrees as PR-ineligible.
+	return worktree.Branch == base || worktree.Branch == "" || worktree.Bare
 }
