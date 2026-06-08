@@ -272,8 +272,8 @@ func TestServiceStatusWrapsPullRequestErrors(t *testing.T) {
 	assertWrappedError(t, err, "load pull requests", wantErr)
 }
 
-func TestServiceStatusWrapsAgentErrors(t *testing.T) {
-	wantErr := errors.New("ps failed")
+func TestServiceStatusDegradesWhenAgentSessionsError(t *testing.T) {
+	agents := &fakeAgents{err: errors.New("ps failed")}
 	svc := NewService(ServiceConfig{
 		Git: fakeGit{
 			root: "/repo/grove",
@@ -282,11 +282,22 @@ func TestServiceStatusWrapsAgentErrors(t *testing.T) {
 				{Path: "/repo/grove", Branch: "main", Head: "abc"},
 			},
 		},
-		Agents: &fakeAgents{err: wantErr},
+		Agents: agents,
 	})
 
-	_, err := svc.Status(context.Background(), "/repo/grove")
-	assertWrappedError(t, err, "load agent sessions", wantErr)
+	got, err := svc.Status(context.Background(), "/repo/grove")
+	if err != nil {
+		t.Fatalf("Status returned error: %v", err)
+	}
+	if !agents.called {
+		t.Fatal("Sessions was not called")
+	}
+	if len(got.Worktrees) != 1 {
+		t.Fatalf("len(Worktrees) = %d, want 1", len(got.Worktrees))
+	}
+	if len(got.Statuses) != 1 {
+		t.Fatalf("len(Statuses) = %d, want 1", len(got.Statuses))
+	}
 }
 
 func TestServiceStatusRequiresGitClient(t *testing.T) {

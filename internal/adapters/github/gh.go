@@ -15,16 +15,19 @@ import (
 )
 
 type Runner interface {
-	Run(context.Context, string, ...string) ([]byte, error)
+	Run(ctx context.Context, cwd string, name string, args ...string) ([]byte, error)
 }
 
 type ExecRunner struct{}
 
-func (ExecRunner) Run(ctx context.Context, name string, args ...string) ([]byte, error) {
+func (ExecRunner) Run(ctx context.Context, cwd string, name string, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, name, args...)
+	if cwd != "" {
+		cmd.Dir = cwd
+	}
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 
@@ -90,9 +93,7 @@ func NewClient(runner Runner) *Client {
 }
 
 func (c *Client) PullRequests(ctx context.Context, root workspace.RepoRoot) ([]review.PullRequest, error) {
-	_ = root
-
-	out, err := c.runner.Run(ctx, "gh", "pr", "list", "--json", "number,url,state,isDraft,headRefName")
+	out, err := c.runner.Run(ctx, string(root), "gh", "pr", "list", "--json", "number,url,state,isDraft,headRefName")
 	if err != nil {
 		if isMissingExecutable(err) {
 			return []review.PullRequest{}, UnavailableError{Tool: "gh"}
@@ -134,19 +135,5 @@ func isMissingExecutable(err error) bool {
 		return true
 	}
 
-	var cmdErr commandError
-	if errors.As(err, &cmdErr) {
-		return hasMissingExecutableMessage(cmdErr.Err)
-	}
-
-	return hasMissingExecutableMessage(err)
-}
-
-func hasMissingExecutableMessage(err error) bool {
-	if err == nil {
-		return false
-	}
-	message := strings.ToLower(err.Error())
-	return strings.Contains(message, "executable file not found") ||
-		strings.Contains(message, "no such file or directory")
+	return false
 }

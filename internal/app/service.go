@@ -78,7 +78,9 @@ func (s *Service) Status(ctx context.Context, path string) (workspace.Workspace,
 
 	if s.agents != nil {
 		if _, err := s.agents.Sessions(ctx); err != nil {
-			return workspace.Workspace{}, fmt.Errorf("load agent sessions: %w", err)
+			// Agent sessions are not surfaced in the workspace snapshot yet, so
+			// process lookup failures degrade silently until there is a field for
+			// degraded agent state.
 		}
 	}
 

@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -121,9 +122,14 @@ func parseSessionLine(line string) (agent.Session, bool) {
 }
 
 func detectEditor(command string) (string, bool) {
-	command = strings.ToLower(command)
+	fields := strings.Fields(command)
+	if len(fields) == 0 {
+		return "", false
+	}
+
+	executable := strings.ToLower(filepath.Base(fields[0]))
 	for _, editor := range []string{"claude", "gemini", "opencode", "codex"} {
-		if strings.Contains(command, editor) {
+		if executable == editor {
 			return editor, true
 		}
 	}

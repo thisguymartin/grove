@@ -13,7 +13,7 @@ import (
 func TestClientPullRequestsMapsGHJSON(t *testing.T) {
 	runner := &fakeRunner{
 		output: map[string]string{
-			"gh pr list --json number,url,state,isDraft,headRefName": `[
+			"/repo/grove | gh pr list --json number,url,state,isDraft,headRefName": `[
 				{"number":17,"url":"https://github.com/thisguymartin/grove/pull/17","state":"OPEN","isDraft":false,"headRefName":"feat/go-control-tower"},
 				{"number":18,"url":"https://github.com/thisguymartin/grove/pull/18","state":"OPEN","isDraft":true,"headRefName":"feat/agent-status"}
 			]`,
@@ -38,13 +38,13 @@ func TestClientPullRequestsMapsGHJSON(t *testing.T) {
 			t.Fatalf("PullRequests[%d] = %#v, want %#v", i, got[i], want[i])
 		}
 	}
-	assertCalled(t, runner, "gh pr list --json number,url,state,isDraft,headRefName")
+	assertCalled(t, runner, "/repo/grove", "gh pr list --json number,url,state,isDraft,headRefName")
 }
 
 func TestClientPullRequestsMissingGHReturnsUnavailable(t *testing.T) {
 	runner := &fakeRunner{
 		err: map[string]error{
-			"gh pr list --json number,url,state,isDraft,headRefName": exec.ErrNotFound,
+			"/repo/grove | gh pr list --json number,url,state,isDraft,headRefName": exec.ErrNotFound,
 		},
 	}
 	client := NewClient(runner)
@@ -62,10 +62,35 @@ func TestClientPullRequestsMissingGHReturnsUnavailable(t *testing.T) {
 	}
 }
 
+func TestClientPullRequestsGenericNoSuchFileErrorIsCommandError(t *testing.T) {
+	wantErr := errors.New("open .git/config: no such file or directory")
+	runner := &fakeRunner{
+		err: map[string]error{
+			"/repo/grove | gh pr list --json number,url,state,isDraft,headRefName": wantErr,
+		},
+	}
+	client := NewClient(runner)
+
+	got, err := client.PullRequests(context.Background(), "/repo/grove")
+	if len(got) != 0 {
+		t.Fatalf("PullRequests = %#v, want empty slice", got)
+	}
+	var unavailable UnavailableError
+	if errors.As(err, &unavailable) {
+		t.Fatalf("PullRequests error = %v, did not want UnavailableError", err)
+	}
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("PullRequests error = %v, want wrapping %v", err, wantErr)
+	}
+	if !strings.Contains(err.Error(), "gh pr list") {
+		t.Fatalf("PullRequests error = %q, want command context", err.Error())
+	}
+}
+
 func TestClientPullRequestsInvalidJSONWrapsContext(t *testing.T) {
 	runner := &fakeRunner{
 		output: map[string]string{
-			"gh pr list --json number,url,state,isDraft,headRefName": "{",
+			"/repo/grove | gh pr list --json number,url,state,isDraft,headRefName": "{",
 		},
 	}
 	client := NewClient(runner)
@@ -82,13 +107,19 @@ func TestClientPullRequestsInvalidJSONWrapsContext(t *testing.T) {
 type fakeRunner struct {
 	output map[string]string
 	err    map[string]error
-	calls  []string
+	calls  []fakeCall
 }
 
-func (f *fakeRunner) Run(_ context.Context, name string, args ...string) ([]byte, error) {
+type fakeCall struct {
+	cwd     string
+	command string
+}
+
+func (f *fakeRunner) Run(_ context.Context, cwd string, name string, args ...string) ([]byte, error) {
 	parts := append([]string{name}, args...)
-	key := strings.Join(parts, " ")
-	f.calls = append(f.calls, key)
+	command := strings.Join(parts, " ")
+	key := cwd + " | " + command
+	f.calls = append(f.calls, fakeCall{cwd: cwd, command: command})
 
 	if err, ok := f.err[key]; ok {
 		return nil, err
@@ -100,13 +131,13 @@ func (f *fakeRunner) Run(_ context.Context, name string, args ...string) ([]byte
 	return []byte(out), nil
 }
 
-func assertCalled(t *testing.T, runner *fakeRunner, want string) {
+func assertCalled(t *testing.T, runner *fakeRunner, wantCWD string, wantCommand string) {
 	t.Helper()
 
 	for _, call := range runner.calls {
-		if call == want {
+		if call.cwd == wantCWD && call.command == wantCommand {
 			return
 		}
 	}
-	t.Fatalf("calls = %#v, want call %q", runner.calls, want)
+	t.Fatalf("calls = %#v, want cwd %q command %q", runner.calls, wantCWD, wantCommand)
 }

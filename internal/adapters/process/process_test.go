@@ -61,6 +61,26 @@ func TestClientSessionsReturnsKnownAgentRows(t *testing.T) {
 	}
 }
 
+func TestClientSessionsDoesNotMatchEditorNamesInArguments(t *testing.T) {
+	runner := &fakeRunner{
+		output: map[string]string{
+			"ps -axo pid=,command=": strings.Join([]string{
+				" 1234 vim codex-notes.md",
+				" 5678 nvim /tmp/claude-plan.md",
+			}, "\n"),
+		},
+	}
+	client := NewClient(runner)
+
+	got, err := client.Sessions(context.Background())
+	if err != nil {
+		t.Fatalf("Sessions returned error: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("Sessions = %#v, want empty slice", got)
+	}
+}
+
 type fakeRunner struct {
 	output map[string]string
 	err    map[string]error
