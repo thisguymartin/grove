@@ -38,6 +38,26 @@ func TestRunVersionPrintsVersion(t *testing.T) {
 	}
 }
 
+func TestRunPlaceholderCommandsReportNotWired(t *testing.T) {
+	for _, cmd := range []string{"status", "ls", "tui"} {
+		t.Run(cmd, func(t *testing.T) {
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
+
+			code := run(context.Background(), []string{cmd}, &stdout, &stderr)
+			if code != 2 {
+				t.Fatalf("%s exit code = %d, want 2", cmd, code)
+			}
+			if !strings.Contains(stderr.String(), cmd+" is not wired yet") {
+				t.Fatalf("stderr missing not-wired message:\n%s", stderr.String())
+			}
+			if stdout.Len() != 0 {
+				t.Fatalf("stdout = %q, want empty", stdout.String())
+			}
+		})
+	}
+}
+
 func TestRunUnknownCommandReportsError(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
