@@ -1,0 +1,16 @@
+worktree /repo/grove
+HEAD 1111111111111111111111111111111111111111
+branch refs/heads/main
+
+worktree /repo/.worktrees/feat-go-tui
+HEAD 2222222222222222222222222222222222222222
+branch refs/heads/feat/go-tui
+
+worktree /repo/.worktrees/detached-check
+HEAD 3333333333333333333333333333333333333333
+detached
+
+worktree /repo/.worktrees/locked
+HEAD 4444444444444444444444444444444444444444
+branch refs/heads/fix/install
+locked maintenance window
