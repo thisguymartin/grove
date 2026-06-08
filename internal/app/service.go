@@ -1,0 +1,53 @@
+package app
+
+import (
+	"context"
+	"errors"
+
+	"github.com/thisguymartin/grove/internal/domain/workspace"
+)
+
+type GitClient interface {
+	Root(context.Context, string) (workspace.RepoRoot, error)
+	BaseBranch(context.Context, workspace.RepoRoot) (workspace.BranchName, error)
+	Worktrees(context.Context, workspace.RepoRoot) ([]workspace.Worktree, error)
+}
+
+type ServiceConfig struct {
+	Git GitClient
+}
+
+type Service struct {
+	git GitClient
+}
+
+func NewService(cfg ServiceConfig) *Service {
+	return &Service{git: cfg.Git}
+}
+
+func (s *Service) Status(ctx context.Context, path string) (workspace.Workspace, error) {
+	if s.git == nil {
+		return workspace.Workspace{}, errors.New("git client is required")
+	}
+
+	root, err := s.git.Root(ctx, path)
+	if err != nil {
+		return workspace.Workspace{}, err
+	}
+
+	base, err := s.git.BaseBranch(ctx, root)
+	if err != nil {
+		return workspace.Workspace{}, err
+	}
+
+	worktrees, err := s.git.Worktrees(ctx, root)
+	if err != nil {
+		return workspace.Workspace{}, err
+	}
+
+	return workspace.Workspace{
+		Root:      root,
+		Base:      base,
+		Worktrees: worktrees,
+	}, nil
+}
