@@ -156,6 +156,11 @@ func TestParseWorktreePorcelainMalformedInput(t *testing.T) {
 			in:   "bare\n",
 			want: "line 1: bare before worktree",
 		},
+		{
+			name: "prunable before worktree",
+			in:   "prunable stale\n",
+			want: "line 1: prunable before worktree",
+		},
 	}
 
 	for _, tt := range tests {

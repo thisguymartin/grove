@@ -45,6 +45,9 @@ func ParseWorktreePorcelain(input string) ([]workspace.Worktree, error) {
 		}
 
 		key, value, _ := strings.Cut(line, " ")
+		if key != "worktree" && current.Path == "" {
+			return nil, fmt.Errorf("line %d: %s before worktree", lineNumber, key)
+		}
 		switch key {
 		case "worktree":
 			if value == "" {
