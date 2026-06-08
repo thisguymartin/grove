@@ -58,6 +58,39 @@ func TestRunPlaceholderCommandsReportNotWired(t *testing.T) {
 	}
 }
 
+func TestRunStatusJSONPrintsSnapshot(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := run(context.Background(), []string{"status", "--json"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("status --json exit code = %d, want 0; stderr=%q", code, stderr.String())
+	}
+
+	output := stdout.String()
+	for _, want := range []string{`"root"`, `"worktrees"`, `"next_actions"`} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("json output missing %q:\n%s", want, output)
+		}
+	}
+}
+
+func TestRunStatusUnsupportedFlagsExitTwo(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := run(context.Background(), []string{"status", "--porcelain"}, &stdout, &stderr)
+	if code != 2 {
+		t.Fatalf("status unsupported flag exit code = %d, want 2", code)
+	}
+	if !strings.Contains(stderr.String(), "unsupported status flags") {
+		t.Fatalf("stderr missing unsupported status flags:\n%s", stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty", stdout.String())
+	}
+}
+
 func TestRunUnknownCommandReportsError(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer

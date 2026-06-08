@@ -65,6 +65,24 @@ func TestServiceStatusBuildsWorkspace(t *testing.T) {
 	if len(got.Worktrees) != 2 {
 		t.Fatalf("len(Worktrees) = %d, want 2", len(got.Worktrees))
 	}
+	if len(got.Statuses) != 2 {
+		t.Fatalf("len(Statuses) = %d, want 2", len(got.Statuses))
+	}
+	if got.Statuses[0].Worktree.Branch != "main" || !got.Statuses[0].Clean || got.Statuses[0].Checks != workspace.CheckStateUnknown || !got.Statuses[0].HasPR {
+		t.Fatalf("main status = %#v, want clean baseline status with PR", got.Statuses[0])
+	}
+	if got.Statuses[1].Worktree.Branch != "feat/go-tui" || !got.Statuses[1].Clean || got.Statuses[1].Checks != workspace.CheckStateUnknown || got.Statuses[1].HasPR {
+		t.Fatalf("feature status = %#v, want clean baseline status without PR", got.Statuses[1])
+	}
+	if len(got.NextActions) != 2 {
+		t.Fatalf("len(NextActions) = %d, want 2", len(got.NextActions))
+	}
+	if got.NextActions[0].Branch != "feat/go-tui" || got.NextActions[0].Kind != workspace.NextActionCreatePR {
+		t.Fatalf("first next action = %#v, want feat/go-tui create PR", got.NextActions[0])
+	}
+	if got.NextActions[1].Branch != "main" || got.NextActions[1].Kind != workspace.NextActionIdle {
+		t.Fatalf("second next action = %#v, want main idle", got.NextActions[1])
+	}
 }
 
 func TestServiceStatusRequiresGitClient(t *testing.T) {

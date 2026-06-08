@@ -46,9 +46,21 @@ func (s *Service) Status(ctx context.Context, path string) (workspace.Workspace,
 		return workspace.Workspace{}, fmt.Errorf("list worktrees: %w", err)
 	}
 
+	statuses := make([]workspace.WorktreeStatus, 0, len(worktrees))
+	for _, worktree := range worktrees {
+		statuses = append(statuses, workspace.WorktreeStatus{
+			Worktree: worktree,
+			Clean:    true,
+			HasPR:    worktree.Branch == base,
+			Checks:   workspace.CheckStateUnknown,
+		})
+	}
+
 	return workspace.Workspace{
-		Root:      root,
-		Base:      base,
-		Worktrees: worktrees,
+		Root:        root,
+		Base:        base,
+		Worktrees:   worktrees,
+		Statuses:    statuses,
+		NextActions: workspace.ScoreNextActions(statuses),
 	}, nil
 }

@@ -2,10 +2,14 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"strings"
+
+	"github.com/thisguymartin/grove/internal/adapters/git"
+	"github.com/thisguymartin/grove/internal/app"
 )
 
 var version = "0.1.0-dev"
@@ -15,8 +19,6 @@ func main() {
 }
 
 func run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) int {
-	_ = ctx
-
 	if len(args) == 0 {
 		printUsage(stdout)
 		return 0
@@ -29,7 +31,9 @@ func run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer)
 	case "version", "--version":
 		fmt.Fprintln(stdout, version)
 		return 0
-	case "status", "ls", "tui":
+	case "status":
+		return runStatus(ctx, args[1:], stdout, stderr)
+	case "ls", "tui":
 		fmt.Fprintf(stderr, "%s is not wired yet\n", args[0])
 		return 2
 	default:
@@ -37,6 +41,31 @@ func run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer)
 		printShortUsage(stderr)
 		return 2
 	}
+}
+
+func runStatus(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) int {
+	if len(args) == 0 {
+		fmt.Fprintln(stderr, "status is not wired yet")
+		return 2
+	}
+	if len(args) != 1 || args[0] != "--json" {
+		fmt.Fprintln(stderr, "unsupported status flags")
+		return 2
+	}
+
+	svc := app.NewService(app.ServiceConfig{
+		Git: git.NewClient(nil),
+	})
+	snapshot, err := svc.Status(ctx, ".")
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	if err := json.NewEncoder(stdout).Encode(snapshot); err != nil {
+		fmt.Fprintf(stderr, "encode status json: %v\n", err)
+		return 1
+	}
+	return 0
 }
 
 func printUsage(w io.Writer) {
