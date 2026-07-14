@@ -7,8 +7,11 @@ Grove now uses a single, git-style entry point: **`grove <verb>`** — like `git
 ## Workspace
 
 ```bash
-grove up [ai-editor] [path]    # Launch Zellij, one tab per worktree (was bare `grove`)
-grove status [path]            # Live worktree status dashboard
+grove                           # Attach to or launch this repo's Zellij workspace
+grove up [--fresh] [ai-editor] [path]
+                                # Same behavior; --fresh replaces the session
+grove status [path] [--full | --json]
+                                # One-shot status; flags need GROVE_STATUS_BIN
 grove agents                   # Live dashboard of running AI agents
 ```
 
@@ -122,5 +125,6 @@ Shell aliases from `git-worktree-aliases.sh` (or `.fish`):
 | `GWT_WORKTREE_DIR` | Override the worktree parent directory |
 | `GROVE_EDITOR` | Editor for `grove open` (default: `$EDITOR`, else `code`) |
 | `AI_EDITOR` | Override the saved default AI agent for the current environment |
+| `GROVE_STATUS_BIN` | Executable experimental Go renderer used by `grove status` and Overview |
 
 The config file contains one validated line, such as `default_ai=codex`. A fresh install always writes it. `default_ai=none` keeps worktree-only commands available while agent launches return setup guidance.

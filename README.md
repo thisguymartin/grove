@@ -16,18 +16,18 @@ Grove is a thin shell layer on top of tools you already use — git worktrees, Z
 
 1. **Worktrees** — each branch lives in its own directory on disk, so you can have `main`, `feature/auth`, and `fix-login` all checked out at the same time with no stashing.
 
-2. **`grove .`** — discovers all worktrees in the current repo and generates a Zellij layout on the fly. Each worktree becomes a tab. Use `grove claude .`, `grove opencode .`, or `grove codex .` to choose a different AI editor before the path.
+2. **`grove`** — resumes this repository's existing Zellij session, or creates one when it does not exist. Each worktree becomes a tab. Use `grove up --fresh` when you intentionally want to rebuild the session.
 
 3. **Each tab** gets three side-by-side panes:
    - **Left (60%):** LazyGit scoped to that worktree's directory
    - **Middle (~12%):** A Workbench shell — run tests, servers, whatever
    - **Right (~28%):** Your AI agent (`claude`, `gemini`, `opencode`, or `codex`) in that worktree
 
-4. **Custom tab bar** — Grove vendors `zjstatus` and replaces the stock Zellij tab/status bars with one colorful top bar. It shows mode, worktree tabs, the active AI editor, and the Zellij session name. If you prefer the native Zellij bars, launch with `GROVE_ZELLIJ_BAR=stock grove .`.
+4. **Custom tab bar** — Grove vendors `zjstatus` and replaces the stock Zellij tab/status bars with one colorful top bar. It shows mode, worktree tabs, the active AI editor, and the Zellij session name. If you prefer the native Zellij bars, launch with `GROVE_ZELLIJ_BAR=stock grove`.
 
-5. **Overview tab** — the first tab shows a live dashboard with worktree status, AI agent status, PR/CI status, and resource monitoring across all worktrees.
+5. **Overview tab** — the first tab is one quiet, live status pane. Set `GROVE_STATUS_BIN` to an executable development build for typed git, PR/check, and repo-scoped agent status; otherwise Grove uses the shell worktree summary.
 
-6. **Session hygiene** — `grove` auto-kills any previous session with the same name before launching, and sessions quit when you close the terminal. No stale Zellij sessions accumulating.
+6. **Session reuse** — running `grove` again attaches without restarting agents or shells. `grove up --fresh` is the explicit replacement path.
 
 The workflow: create worktrees with `wtab`/`wta`, run `grove`, and navigate between branches with `Alt+Left/Right`. Clean up finished branches with `wtrm` or `wtp`.
 
@@ -128,7 +128,7 @@ Agent install commands used by Grove:
 `cd` into any git repo and run:
 
 ```bash
-grove .
+grove
 ```
 
 Full command reference: [`docs/commands.md`](docs/commands.md)
@@ -150,12 +150,12 @@ zellij --layout /tmp/grove-layout.kdl
 This will:
 
 1. Discover all git worktrees in your current repo
-2. Auto-kill any previous session with the same name
-3. Launch Zellij with an **Overview tab** (first) + **one custom-bar tab per worktree**
+2. Attach to the existing repository session when one is running
+3. Otherwise launch Zellij with an **Overview tab** (first) + **one custom-bar tab per worktree**
 
 On first launch, Zellij may ask for permission to load the vendored `zjstatus` plugin from `vendor/zjstatus/zjstatus.wasm`.
 
-Sessions auto-quit when you close the terminal — no stale sessions.
+Detach from Zellij when you want agents and shells to keep running, then use `grove` to return.
 
 ## Commands
 
@@ -165,7 +165,10 @@ Most-used commands:
 
 | Command | Description |
 | :------ | :---------- |
-| `grove .` | Launch workspace with the saved default AI agent |
+| `grove` / `grove up` | Attach to or launch the repository workspace |
+| `grove up --fresh` | Replace the repository workspace |
+| `grove go <branch>` | Focus that branch tab, then attach |
+| `grove status [path]` | Show the repository status once |
 | `grove claude .` | Launch workspace with Claude |
 | `grove codex .` | Launch workspace with Codex |
 | `wtab <branch>` | Create a new branch + worktree |
@@ -185,7 +188,7 @@ wta existing-branch        # worktree for existing remote branch
 wtls
 
 # Launch workspace with all worktrees as tabs
-grove .
+grove
 grove claude .
 
 # Navigate tabs
@@ -210,7 +213,7 @@ wtp                        # auto-prune merged worktrees
 
 ## Session Management
 
-`grove` auto-kills its previous session before re-launching. Sessions also auto-quit when the terminal closes (`on_force_close "quit"`).
+`grove` reuses its repository session so running agents and shells survive terminal detach/reattach. Use `grove up --fresh` to kill and rebuild that session.
 
 Grove keeps Zellij session names within Zellij's 24-character limit. Long repository names use a shortened readable prefix plus a stable checksum.
 

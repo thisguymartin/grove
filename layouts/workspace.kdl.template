@@ -1,28 +1,9 @@
 layout {
     // {{DEFAULT_TAB_TEMPLATE}}
-    // Overview tab — live project dashboards
+    // Overview tab — concise repository status
     tab name="Overview" color="cyan" cwd="{{GROVE_INSTALL_DIR}}" {
-        pane split_direction="vertical" {
-            // Left: core status panes
-            pane split_direction="horizontal" size="65%" {
-                pane command="bash" name="Worktree Status" size="60%" {
-                    args "-c" "while true; do _out=$(bash ./worktree-status.sh \"{{REPO_PATH}}\" 2>/dev/null); clear; printf '%s' \"$_out\"; sleep 15; done"
-                }
-                pane command="bash" name="AI Status" size="40%" {
-                    args "-c" "while true; do _out=$(bash ./ai-status.sh 2>/dev/null); clear; printf '%s' \"$_out\"; sleep 30; done"
-                }
-            }
-
-            // Right: secondary monitors as stacked panes (accordion)
-            pane size="35%" stacked=true {
-                // {{GITHUB_STACK_PANES}}
-                pane command="bash" name="Global Stash & WIP" {
-                    args "-c" "while true; do _out=$(bash ./stash-status.sh \"{{REPO_PATH}}\" 2>/dev/null); clear; printf '%s' \"$_out\"; sleep 20; done"
-                }
-                pane command="bash" name="Resources" {
-                    args "-c" "while true; do _out=$(bash ./resource-monitor.sh 2>/dev/null); clear; printf '%s' \"$_out\"; sleep 5; done"
-                }
-            }
+        pane command="bash" name="Overview Status" {
+            args "-c" "while true; do if [ -n \"${GROVE_STATUS_BIN:-}\" ] && [ -x \"$GROVE_STATUS_BIN\" ]; then _out=$(\"$GROVE_STATUS_BIN\" status \"{{REPO_PATH}}\" 2>&1); else _out=$(bash ./worktree-status.sh \"{{REPO_PATH}}\" 2>&1); fi; clear; printf '%s' \"$_out\"; sleep 30; done"
         }
     }
 

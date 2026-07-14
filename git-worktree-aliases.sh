@@ -1,27 +1,7 @@
 #!/usr/bin/env bash
-# Git Worktree Shell Aliases & Functions
-#
-# Source this file in your ~/.zshrc or ~/.bashrc:
-#   source ~/.local/share/grove/git-worktree-aliases.sh
-#
-# Or add to your shell config with a one-liner:
-#   echo 'source ~/.local/share/grove/git-worktree-aliases.sh' >> ~/.zshrc
-#
-# Git config aliases (wta, wtab, wtp) are shell functions here for broader
-# compatibility and richer output. wtls/wtrm are thin wrappers around git builtins.
-#
-# Worktrees are stored under a sibling "worktrees/<repo>/<branch>" directory,
-# keeping them out of the repo root and easy to find.
-#
-# Example layout on disk:
-#   ~/projects/
-#   ├── my-repo/              <- main worktree (your repo)
-#   └── worktrees/
-#       └── my-repo/
-#           ├── feature-auth/ <- wtab feature-auth
-#           └── fix-login/    <- wtab fix-login
+# Grove shell integration for Bash and Zsh.
+# Source this file from ~/.bashrc, ~/.bash_profile, or ~/.zshrc.
 
-# Identify the installation directory of Grove
 if [[ -n "${BASH_SOURCE[0]:-}" ]]; then
     GROVE_INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 elif [[ -n "${ZSH_VERSION:-}" ]]; then
@@ -30,347 +10,57 @@ else
     GROVE_INSTALL_DIR="$(cd "$(dirname "$0")" && pwd)"
 fi
 
-# ---------------------------------------------------------------------------
-# wta — add worktree for an EXISTING upstream branch
-# Usage: wta <existing-branch>
-# ---------------------------------------------------------------------------
-wta() {
-    if [[ -z "${1:-}" ]]; then
-        echo "Usage: wta <existing-branch>"
-        return 1
-    fi
-    bash "$GROVE_INSTALL_DIR/git-worktree.sh" add "$1"
+_grove_toolkit() {
+    bash "$GROVE_INSTALL_DIR/git-worktree.sh" "$@"
 }
 
-# ---------------------------------------------------------------------------
-# wtab — add worktree AND create a new branch
-# Usage: wtab <new-branch-name>
-# ---------------------------------------------------------------------------
-wtab() {
-    if [[ -z "${1:-}" ]]; then
-        echo "Usage: wtab <new-branch-name>"
-        return 1
-    fi
-    bash "$GROVE_INSTALL_DIR/git-worktree.sh" new "$1"
-}
+# Legacy worktree commands remain thin compatibility wrappers.
+wta() { _grove_toolkit add "$@"; }
+wtab() { _grove_toolkit new "$@"; }
+wtls() { _grove_toolkit ls "$@"; }
+wtinfo() { _grove_toolkit info "$@"; }
+wtdiff() { _grove_toolkit diff "$@"; }
+wtrn() { _grove_toolkit rename "$@"; }
+wtlock() { _grove_toolkit lock "$@"; }
+wtunlock() { _grove_toolkit unlock "$@"; }
+wtstatus() { _grove_toolkit status "$@"; }
 
-# ---------------------------------------------------------------------------
-# wtp — prune worktrees that have been merged, rebased, or squash-merged to main
-# Usage: wtp [main-branch]   (default: auto-detected or 'main')
-#
-# Skips worktrees that are:
-#   - locked
-#   - the main repo root
-#   - detached HEAD
-#   - have uncommitted changes
-# ---------------------------------------------------------------------------
 wtp() {
-    local default_branch main_branch
-    default_branch=$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null \
-        | sed 's@^origin/@@' || true)
-    main_branch="${1:-${default_branch:-main}}"
-
-    echo "Pruning worktrees merged into '$main_branch'..."
-    git fetch -p origin >/dev/null 2>&1 || true
-    git worktree prune
-
-    local repo_root
-    repo_root=$(git rev-parse --show-toplevel)
-
-    while IFS=$'\t' read -r wt br locked; do
-        [[ -n "$wt" ]] || continue
-        [[ -n "$locked" ]] && { echo "  Skipping (locked): $wt"; continue; }
-        [[ "$wt" == "$repo_root" ]] && continue
-        [[ -z "$br" ]] && { echo "  Skipping (detached HEAD): $wt"; continue; }
-
-        local branch_name="${br#refs/heads/}"
-
-        if [[ -n "$(git -C "$wt" status --porcelain 2>/dev/null)" ]]; then
-            echo "  Skipping (dirty): $branch_name"
-            continue
-        fi
-
-        # Merged directly into main
-        if git merge-base --is-ancestor "$branch_name" "$main_branch" 2>/dev/null; then
-            echo "  Removing (merged): $branch_name"
-            git worktree remove --force "$wt"
-            continue
-        fi
-
-        local base
-        base=$(git merge-base "$main_branch" "$branch_name" 2>/dev/null || true)
-        [[ -z "$base" ]] && continue
-
-        # Branch has no unique commits vs main
-        if git diff --quiet "$base..$branch_name" 2>/dev/null; then
-            echo "  Removing (no unique commits): $branch_name"
-            git worktree remove --force "$wt"
-            continue
-        fi
-
-        # Squash-merge / rebase detection via patch-id
-        local branch_patch
-        branch_patch=$(git diff "$base..$branch_name" | git patch-id --stable \
-            | awk '{print $1}' | head -n1 2>/dev/null || true)
-        [[ -z "$branch_patch" ]] && continue
-
-        local found=""
-        while IFS= read -r c; do
-            local cid
-            cid=$(git show --pretty=format: --no-color "$c" \
-                | git patch-id --stable | awk '{print $1}' | head -n1 2>/dev/null || true)
-            if [[ "$cid" == "$branch_patch" ]]; then
-                found="$c"
-                break
-            fi
-        done < <(git rev-list "$base..$main_branch" 2>/dev/null)
-
-        if [[ -n "$found" ]]; then
-            echo "  Removing (squash/rebase merged): $branch_name"
-            git worktree remove --force "$wt"
-        fi
-
-    done < <(git worktree list --porcelain | awk '
-        /^worktree / { wt = substr($0, 10) }
-        /^branch /   { br = substr($0, 8) }
-        /^detached/  { br = "" }
-        /^locked/    { locked = "locked" }
-        /^$/         {
-            if (wt != "") {
-                print wt "\t" br "\t" locked
-                wt = br = locked = ""
-            }
-        }
-        END { if (wt != "") print wt "\t" br "\t" locked }
-    ')
-
-    echo "Done."
+    if [[ -n "${1:-}" ]]; then
+        GWT_BASE_BRANCH="$1" _grove_toolkit prune
+    else
+        _grove_toolkit prune
+    fi
 }
 
-# ---------------------------------------------------------------------------
-# wtls — list all worktrees for this repo
-# ---------------------------------------------------------------------------
-alias wtls='git worktree list'
+# wtrm historically accepts a path and force-removes it. Preserve that contract.
+wtrm() {
+    if [[ -z "${1:-}" ]]; then
+        echo "Usage: wtrm <worktree-path>"
+        return 1
+    fi
+    git worktree remove --force "$@"
+}
 
-# ---------------------------------------------------------------------------
-# wtrm — force remove a worktree
-# Usage: wtrm <worktree-path>
-# ---------------------------------------------------------------------------
-alias wtrm='git worktree remove --force'
-
-# ---------------------------------------------------------------------------
-# wtco — alias for wtcd
-# ---------------------------------------------------------------------------
-alias wtco='wtcd'
-
-# ---------------------------------------------------------------------------
-# wtcd — cd into a worktree by branch name
-# Usage: wtcd <branch>
-# ---------------------------------------------------------------------------
 wtcd() {
     if [[ -z "${1:-}" ]]; then
         echo "Usage: wtcd <branch>"
         return 1
     fi
-    local branch="$1"
     local wt_path
-    wt_path=$(bash "$GROVE_INSTALL_DIR/git-worktree.sh" cd "$branch")
-    if [[ $? -ne 0 ]]; then
-        return 1
-    fi
+    wt_path="$(_grove_toolkit which "$1")" || return 1
     echo "Changing to worktree: $wt_path"
     cd "$wt_path" || return 1
 }
 
-# ---------------------------------------------------------------------------
-# wtinfo — show info about a worktree (path, HEAD, ahead/behind, dirty)
-# Usage: wtinfo [branch]   (defaults to current branch)
-# ---------------------------------------------------------------------------
-wtinfo() {
-    local branch="${1:-$(git symbolic-ref --short HEAD 2>/dev/null)}"
-    if [[ -z "$branch" ]]; then
-        echo "Error: not on a branch and no branch specified"
-        return 1
-    fi
+wtco() { wtcd "$@"; }
 
-    local wt_path head_sha
-    while IFS= read -r line; do
-        case "$line" in
-            worktree\ *) wt_path="${line#worktree }" ;;
-            HEAD\ *)     head_sha="${line#HEAD }" ;;
-            branch\ *)
-                if [[ "${line#branch refs/heads/}" == "$branch" ]]; then
-                    break
-                fi
-                wt_path="" ; head_sha=""
-                ;;
-            "") wt_path="" ; head_sha="" ;;
-        esac
-    done < <(git worktree list --porcelain)
-
-    if [[ -z "$wt_path" ]]; then
-        echo "No worktree found for branch '$branch'"
-        return 1
-    fi
-
-    echo "Branch:  $branch"
-    echo "Path:    $wt_path"
-    echo "HEAD:    ${head_sha:0:10}"
-
-    # Ahead/behind vs remote
-    local upstream
-    upstream=$(git -C "$wt_path" rev-parse --abbrev-ref "@{upstream}" 2>/dev/null || true)
-    if [[ -n "$upstream" ]]; then
-        local ab
-        ab=$(git -C "$wt_path" rev-list --left-right --count "$branch...$upstream" 2>/dev/null || true)
-        if [[ -n "$ab" ]]; then
-            local ahead behind
-            ahead=$(echo "$ab" | awk '{print $1}')
-            behind=$(echo "$ab" | awk '{print $2}')
-            echo "Remote:  $upstream (ahead $ahead, behind $behind)"
-        fi
-    else
-        echo "Remote:  (no upstream)"
-    fi
-
-    # Dirty status
-    local status
-    status=$(git -C "$wt_path" status --porcelain 2>/dev/null)
-    if [[ -n "$status" ]]; then
-        local count
-        count=$(echo "$status" | wc -l | tr -d ' ')
-        echo "Status:  dirty ($count changed file(s))"
-    else
-        echo "Status:  clean"
-    fi
-}
-
-# ---------------------------------------------------------------------------
-# wtdiff — git diff --stat between a worktree branch and the base branch
-# Usage: wtdiff [branch]   (defaults to current branch)
-# ---------------------------------------------------------------------------
-wtdiff() {
-    local branch="${1:-$(git symbolic-ref --short HEAD 2>/dev/null)}"
-    if [[ -z "$branch" ]]; then
-        echo "Error: not on a branch and no branch specified"
-        return 1
-    fi
-
-    local default_base
-    default_base=$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null \
-        | sed 's@^origin/@@' || true)
-    local base="${GWT_BASE_BRANCH:-${default_base:-main}}"
-
-    echo "Diff: $branch vs $base"
-    echo "─────────────────────────────────────────"
-    git diff --stat "$base...$branch"
-}
-
-# ---------------------------------------------------------------------------
-# wtrn — rename a worktree's branch
-# Usage: wtrn <old-branch> <new-branch>
-# ---------------------------------------------------------------------------
-wtrn() {
-    if [[ -z "${1:-}" || -z "${2:-}" ]]; then
-        echo "Usage: wtrn <old-branch> <new-branch>"
-        return 1
-    fi
-    local old="$1" new="$2"
-
-    # Check that the old branch exists
-    if ! git show-ref --verify --quiet "refs/heads/$old"; then
-        echo "Error: branch '$old' does not exist"
-        return 1
-    fi
-
-    git branch -m "$old" "$new"
-    echo "Branch renamed: $old -> $new"
-
-    # Warn about path mismatch
-    local wt_path
-    wt_path=$(git worktree list --porcelain | awk -v br="refs/heads/$new" '
-        /^worktree / { wt = substr($0, 10) }
-        /^branch /   { if (substr($0, 8) == br) print wt }
-    ')
-    if [[ -n "$wt_path" ]]; then
-        echo "Note: worktree path is still: $wt_path"
-        echo "  The directory was not renamed. You may want to recreate the worktree"
-        echo "  if the path mismatch is confusing."
-    fi
-}
-
-# ---------------------------------------------------------------------------
-# wtlock / wtunlock — lock or unlock a worktree
-# Usage: wtlock <path>   wtunlock <path>
-# ---------------------------------------------------------------------------
-wtlock() {
-    if [[ -z "${1:-}" ]]; then
-        echo "Usage: wtlock <path>"
-        return 1
-    fi
-    git worktree lock "$1"
-    echo "Worktree locked: $1"
-}
-
-wtunlock() {
-    if [[ -z "${1:-}" ]]; then
-        echo "Usage: wtunlock <path>"
-        return 1
-    fi
-    git worktree unlock "$1"
-    echo "Worktree unlocked: $1"
-}
-
-# ---------------------------------------------------------------------------
-# wtstatus — show live worktree status dashboard (standalone, no Zellij)
-# Usage: wtstatus [repo-path]
-# ---------------------------------------------------------------------------
-wtstatus() {
-    local status_script="$GROVE_INSTALL_DIR/worktree-status.sh"
-    if [[ ! -f "$status_script" ]]; then
-        echo "Error: worktree-status.sh not found at $status_script"
-        return 1
-    fi
-
-    watch -n 2 -c "$status_script" "${1:-$(pwd)}"
-}
-
-# ---------------------------------------------------------------------------
-# wtui — launch a Zellij session with one tab per worktree (requires zellij)
-# Usage: wtui [repo-path]
-# ---------------------------------------------------------------------------
 wtui() {
-    local launcher="$GROVE_INSTALL_DIR/launch-worktrees.sh"
-    if [[ ! -f "$launcher" ]]; then
-        echo "Error: launch-worktrees.sh not found at $launcher"
-        return 1
-    fi
-
-    bash "$launcher" "${1:-$(pwd)}"
+    bash "$GROVE_INSTALL_DIR/launch-worktrees.sh" "${1:-$(pwd)}"
 }
 
-# ---------------------------------------------------------------------------
-# grove — git-style entry point for the AI-native workspace
-# Usage: grove <command> [args]   |   grove [ai-editor] [path]
-#   grove                        # show help
-#   grove up [ai] [path]         # launch Zellij workspace
-#   grove .                      # current dir, saved default agent
-#   grove claude                 # current dir, claude (back-compat)
-#   grove new feat/x             # create branch + worktree
-#   grove cd feat/x              # jump into a worktree (changes cwd)
-#   grove main                   # jump into the main worktree (changes cwd)
-#   grove go feat/x              # jump to the worktree's Zellij tab
-#   grove agents                 # live dashboard of running AI agents
-#
-# `cd` and `main` change the *parent shell's* cwd, so they're handled here
-# (a subprocess can't cd for you). Everything else delegates to launch-grove.sh.
-# ---------------------------------------------------------------------------
 grove() {
     local launcher="$GROVE_INSTALL_DIR/launch-grove.sh"
-    if [[ ! -f "$launcher" ]]; then
-        echo "Error: launch-grove.sh not found at $launcher"
-        return 1
-    fi
     local toolkit="$GROVE_INSTALL_DIR/git-worktree.sh"
 
     case "${1:-}" in
@@ -380,20 +70,19 @@ grove() {
                 return 1
             fi
             local wt_path
-            wt_path=$(bash "$toolkit" which "$2") || return 1
+            wt_path="$(bash "$toolkit" which "$2")" || return 1
             echo "Changing to worktree: $wt_path"
             cd "$wt_path" || return 1
             ;;
         main)
             local root_path
-            root_path=$(bash "$toolkit" root) || return 1
+            root_path="$(bash "$toolkit" root)" || return 1
             echo "Changing to main worktree: $root_path"
             cd "$root_path" || return 1
             ;;
         pick)
-            # Interactive picker draws on the tty; capture the chosen path and cd.
             local picked
-            picked=$(bash "$toolkit" pick) || return 1
+            picked="$(bash "$toolkit" pick)" || return 1
             [[ -n "$picked" ]] || return 1
             echo "Changing to worktree: $picked"
             cd "$picked" || return 1
@@ -404,10 +93,6 @@ grove() {
     esac
 }
 
-# ---------------------------------------------------------------------------
-# zj-kill — kill all Zellij sessions (clean slate)
-# Usage: zj-kill
-# ---------------------------------------------------------------------------
 zj-kill() {
     echo "Killing all Zellij sessions..."
     zellij kill-all-sessions 2>/dev/null || true
@@ -415,30 +100,19 @@ zj-kill() {
     echo "Done."
 }
 
-# ---------------------------------------------------------------------------
-# grove completion — tab-suggest subcommands (bash + zsh)
-# Usage: type `grove o<TAB>` -> `grove opencode`, `grove wt <TAB>` -> subcommands
-# ---------------------------------------------------------------------------
 _grove_complete() {
-    local cur prev
+    local cur commands
     cur="${COMP_WORDS[COMP_CWORD]}"
-    prev="${COMP_WORDS[COMP_CWORD-1]}"
-
-    if [[ "$prev" == "wt" || "$prev" == "worktree" ]]; then
-        COMPREPLY=( $(compgen -W "add new rm ls prune info diff rename lock unlock" -- "$cur") )
-        return
-    fi
+    commands="$(bash "$GROVE_INSTALL_DIR/launch-grove.sh" __commands 2>/dev/null)"
 
     if [[ "$COMP_CWORD" -eq 1 ]]; then
-        COMPREPLY=( $(compgen -W "claude gemini opencode codex wt worktree --help -h" -- "$cur") )
+        COMPREPLY=( $(compgen -W "$commands claude gemini opencode codex wt worktree --help -h" -- "$cur") )
         return
     fi
 
-    # fall back to directory completion for the [path] arg
     COMPREPLY=( $(compgen -d -- "$cur") )
 }
 
-# zsh needs bashcompinit before `complete -F` works; bash needs nothing extra
 if [[ -n "${ZSH_VERSION:-}" ]]; then
     autoload -U +X bashcompinit 2>/dev/null && bashcompinit 2>/dev/null
 fi
