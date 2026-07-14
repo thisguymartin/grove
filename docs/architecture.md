@@ -7,6 +7,7 @@ Grove is a bash-first terminal workspace that wires together git worktrees, Zell
 ```text
 grove [path] [ai-editor]
 -> launch-grove.sh [path] [ai-editor]
+-> lib/ai-agent.sh resolves the agent
 -> launch-worktrees.sh --ai <editor> [path]
 ```
 
@@ -14,12 +15,13 @@ grove [path] [ai-editor]
 
 `launch-worktrees.sh` is the core orchestrator.
 
-1. Resolves the target repo and AI editor.
+1. Resolves the target repo and AI editor using explicit argument -> `AI_EDITOR` -> saved config -> legacy OpenCode fallback.
 2. Discovers worktrees via `git worktree list --porcelain`.
 3. Chooses the Zellij bar mode from `GROVE_ZELLIJ_BAR`.
 4. Generates a Zellij layout dynamically.
-5. Replaces any existing Grove session for that repo.
-6. Launches a new Zellij session.
+5. Builds a deterministic session name capped at Zellij's 24-character limit.
+6. Replaces any existing Grove session for that repo.
+7. Launches a new Zellij session.
 
 The default bar mode is `zjstatus`. If `vendor/zjstatus/zjstatus.wasm` is missing, Grove falls back to stock Zellij bars and prints a warning. `GROVE_ZELLIJ_BAR=stock` forces the native `zellij:tab-bar` and `zellij:status-bar`.
 
@@ -65,6 +67,8 @@ Current top-level runtime files:
 - `stash-status.sh`: stash/WIP dashboard
 - `resource-monitor.sh`: process/resource dashboard
 - `install/install.sh`: installer/uninstaller
+- `lib/ai-agent.sh`: validated default-agent config and runtime resolution
+- `lib/session.sh`: bounded, deterministic Zellij session naming
 - `layouts/workspace.kdl.template`: internal Zellij template rendered by `launch-worktrees.sh`
 - `vendor/zjstatus/`: pinned vendored `zjstatus` WASM, license, and version metadata
 
@@ -74,9 +78,11 @@ Current top-level runtime files:
 | :------- | :------ | :------ |
 | `GWT_BASE_BRANCH` | `main` | Base branch for prune/diff behavior |
 | `GWT_WORKTREE_DIR` | `../worktrees/<repo>` | Parent directory for created worktrees |
-| `AI_EDITOR` | `opencode` | Default AI editor per worktree tab |
+| `AI_EDITOR` | saved config | Per-process override for the default AI agent |
 | `GROVE_ZELLIJ_BAR` | `zjstatus` | Zellij bar mode: `zjstatus` or `stock` |
 | `GROVE_DIR` | `$HOME/.local/share/grove` | Install location |
+
+The installer writes `default_ai=<codex|opencode|claude|gemini|none>` to `${XDG_CONFIG_HOME:-$HOME/.config}/grove/config`. The parser reads only the validated value and never sources the file as shell code. Manual checkouts without this file retain the old OpenCode default.
 
 ## Conventions
 

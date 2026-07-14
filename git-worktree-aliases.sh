@@ -354,7 +354,7 @@ wtui() {
 # Usage: grove <command> [args]   |   grove [ai-editor] [path]
 #   grove                        # show help
 #   grove up [ai] [path]         # launch Zellij workspace
-#   grove .                      # current dir, opencode (back-compat)
+#   grove .                      # current dir, saved default agent
 #   grove claude                 # current dir, claude (back-compat)
 #   grove new feat/x             # create branch + worktree
 #   grove cd feat/x              # jump into a worktree (changes cwd)
