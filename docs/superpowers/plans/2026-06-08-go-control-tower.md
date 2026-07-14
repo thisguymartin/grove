@@ -1,4 +1,6 @@
-# Go Control Tower Implementation Plan
+# Go Control Tower Implementation Plan (Superseded)
+
+> Superseded by [`../specs/2026-06-08-go-control-tower-design.md`](../specs/2026-06-08-go-control-tower-design.md). Grove keeps Zellij as the interface and ships only a thin, read-only Go status engine. The Bubble Tea, forms, themes, and full-screen tasks below are intentionally cancelled and retained only as historical context.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

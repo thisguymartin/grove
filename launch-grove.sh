@@ -21,6 +21,26 @@ source "$SCRIPT_DIR/lib/ai-agent.sh"
 
 usage() {
     cat <<'EOF'
+Grove — AI-native terminal workspace
+
+Daily workflow:
+  grove                           Attach to or launch this repo's workspace
+  grove new <branch>              Create a branch and worktree
+  grove ls                        List worktrees
+  grove pick                      Pick a worktree and change directory
+  grove go <branch>               Jump to a worktree tab
+  grove agent <branch> [ai]       Open or focus an AI agent tab
+  grove status [path]             Show repository status
+
+Session options:
+  grove up --fresh [ai] [path]    Replace the existing repo session
+
+Run `grove help --all` for advanced and compatibility commands.
+EOF
+}
+
+full_usage() {
+    cat <<'EOF'
 Grove — git-style AI-native terminal workspace
 
 Usage:
@@ -28,7 +48,8 @@ Usage:
   grove [ai-editor] [path]      Shorthand for `grove up` (back-compat)
 
 Workspace
-  grove up [ai-editor] [path]    Launch Zellij, one tab per worktree
+  grove up [--fresh] [ai-editor] [path]
+                                  Attach to or launch Zellij for this repo
   grove status [path]            Live worktree status dashboard
   grove agents                   Live dashboard of running AI agents
 
@@ -70,13 +91,27 @@ Environment Variables:
 EOF
 }
 
-if [[ $# -eq 0 ]]; then
+print_command_names() {
+    printf '%s\n' \
+        up status agents \
+        new add ls rm cd pick main which root \
+        run exec sync pr mv log open info diff rename prune lock unlock tab \
+        go agent help
+}
+
+if [[ "${1:-}" == "__commands" ]]; then
+    print_command_names
+    exit 0
+fi
+
+if [[ $# -eq 0 ]] && ! git rev-parse --show-toplevel &>/dev/null; then
     usage
     exit 0
 fi
 
 REPO_PATH=""
 EXPLICIT_AI=""
+FRESH_SESSION=false
 
 is_ai_editor() {
     case "$1" in
@@ -103,7 +138,12 @@ case "${1:-}" in
         shift
         exec "$SCRIPT_DIR/git-worktree.sh" "$@" ;;
     help)
-        usage; exit 0 ;;
+        if [[ "${2:-}" == "--all" ]]; then
+            full_usage
+        else
+            usage
+        fi
+        exit 0 ;;
     *)
         if [[ -n "${1:-}" ]] && is_worktree_verb "$1"; then
             exec "$SCRIPT_DIR/git-worktree.sh" "$@"
@@ -115,6 +155,10 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         -h|--help)
             usage; exit 0 ;;
+        --fresh)
+            FRESH_SESSION=true
+            shift
+            ;;
         wt|worktree)
             shift
             exec "$SCRIPT_DIR/git-worktree.sh" "$@"
@@ -142,7 +186,13 @@ AI_EDITOR="$(grove_require_ai_choice "$EXPLICIT_AI")"
 echo "Launching grove with AI_EDITOR=$AI_EDITOR (per-worktree tabs)"
 
 if [[ -n "$REPO_PATH" ]]; then
+    if $FRESH_SESSION; then
+        exec "$SCRIPT_DIR/launch-worktrees.sh" --fresh --ai "$AI_EDITOR" "$REPO_PATH"
+    fi
     exec "$SCRIPT_DIR/launch-worktrees.sh" --ai "$AI_EDITOR" "$REPO_PATH"
 else
+    if $FRESH_SESSION; then
+        exec "$SCRIPT_DIR/launch-worktrees.sh" --fresh --ai "$AI_EDITOR"
+    fi
     exec "$SCRIPT_DIR/launch-worktrees.sh" --ai "$AI_EDITOR"
 fi

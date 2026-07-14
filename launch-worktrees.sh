@@ -17,6 +17,7 @@
 #
 # Options:
 #   --ai <editor>    AI editor command (default: AI_EDITOR, saved config, or legacy opencode)
+#   --fresh          Replace an existing Grove session instead of attaching
 #
 # Tab names come from the branch name (strips "refs/heads/").
 # Detached HEADs use the short commit SHA as the tab name.
@@ -46,6 +47,7 @@ LAYOUT_ONLY=false
 WRITE_LAYOUT_PATH=""
 SESSION_NAME=""  # set after REPO_PATH is resolved below
 EXPLICIT_AI=""
+FRESH_SESSION=false
 GROVE_ZELLIJ_BAR="${GROVE_ZELLIJ_BAR:-zjstatus}"
 
 # Stock Zellij tab colors — cycles through these (cyan is reserved for Overview)
@@ -54,6 +56,7 @@ TAB_COLORS=("green" "blue" "yellow" "orange")
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --layout-only) LAYOUT_ONLY=true; shift ;;
+        --fresh) FRESH_SESSION=true; shift ;;
         --write-layout)
             WRITE_LAYOUT_PATH="${2:?--write-layout requires an output path}"
             shift 2
@@ -87,10 +90,22 @@ if ! git -C "$REPO_PATH" rev-parse --show-toplevel &>/dev/null; then
     exit 1
 fi
 
-# Resolve to the actual top-level so relative paths work
-REPO_PATH=$(git -C "$REPO_PATH" rev-parse --show-toplevel)
+# Resolve to the primary worktree so every linked worktree shares one session.
+CURRENT_WORKTREE_ROOT=$(git -C "$REPO_PATH" rev-parse --show-toplevel)
+REPO_PATH=$(git -C "$CURRENT_WORKTREE_ROOT" worktree list --porcelain | awk '/^worktree / { print substr($0, 10); exit }')
+REPO_PATH="${REPO_PATH:-$CURRENT_WORKTREE_ROOT}"
 REPO_NAME="$(basename "$REPO_PATH")"
 SESSION_NAME="$(grove_session_name "$REPO_NAME")"
+
+if [[ -n "${ZELLIJ_SESSION_NAME:-}" ]]; then
+    if [[ "$ZELLIJ_SESSION_NAME" == "$SESSION_NAME" ]]; then
+        echo "Grove workspace '$SESSION_NAME' is already active."
+        exit 0
+    fi
+    echo "Error: already inside Zellij session '$ZELLIJ_SESSION_NAME'." >&2
+    echo "Detach first, then run Grove for '$SESSION_NAME'." >&2
+    exit 1
+fi
 
 if ! command -v zellij &>/dev/null && ! $LAYOUT_ONLY; then
     echo "Error: zellij is required. Install from https://zellij.dev"
@@ -105,11 +120,6 @@ fi
 
 HAS_LAZYGIT=false
 command -v lazygit &>/dev/null && HAS_LAZYGIT=true
-
-HAS_GH=false
-if command -v gh &>/dev/null && gh auth status &>/dev/null 2>&1; then
-    HAS_GH=true
-fi
 
 # ---------------------------------------------------------------------------
 # Parse git worktrees into parallel arrays
@@ -320,7 +330,7 @@ generate_layout() {
     script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     local template_file="$script_dir/layouts/workspace.kdl.template"
     local esc_repo esc_script_dir esc_zjstatus_wasm
-    local tabs_file gh_panes_file tab_template_file
+    local tabs_file tab_template_file
     local bar_mode zjstatus_wasm
 
     if [[ ! -f "$template_file" ]]; then
@@ -334,22 +344,10 @@ generate_layout() {
     esc_zjstatus_wasm=$(kdl_escape "$zjstatus_wasm")
     bar_mode=$(resolve_zellij_bar "$script_dir")
     tabs_file=$(mktemp /tmp/grove-tabs-XXXXXXXX)
-    gh_panes_file=$(mktemp /tmp/grove-gh-panes-XXXXXXXX)
     tab_template_file=$(mktemp /tmp/grove-tab-template-XXXXXXXX)
-    trap 'rm -f "$tabs_file" "$gh_panes_file" "$tab_template_file"' RETURN
+    trap 'rm -f "$tabs_file" "$tab_template_file"' RETURN
 
     generate_default_tab_template "$bar_mode" "$esc_zjstatus_wasm" "$(kdl_escape "$AI_EDITOR")" > "$tab_template_file"
-
-    if $HAS_GH; then
-        {
-            printf '                pane command="bash" name="PR Status" {\n'
-            printf '                    args "-c" "while true; do _out=$(bash ./pr-status.sh \\\"%s\\\" 2>/dev/null); clear; printf '\''%%s'\'' \\\"$_out\\\"; sleep 60; done"\n' "$esc_repo"
-            printf '                }\n'
-            printf '                pane command="bash" name="CI / GitHub Actions" {\n'
-            printf '                    args "-c" "while true; do _out=$(bash ./ci-status.sh \\\"%s\\\" 2>/dev/null); clear; printf '\''%%s'\'' \\\"$_out\\\"; sleep 60; done"\n' "$esc_repo"
-            printf '                }\n'
-        } >> "$gh_panes_file"
-    fi
 
     for i in "${!WT_PATHS[@]}"; do
         local path="${WT_PATHS[$i]}"
@@ -366,8 +364,14 @@ generate_layout() {
 
         local color_index=$((i % ${#TAB_COLORS[@]}))
         local tab_color="${TAB_COLORS[$color_index]}"
+        local should_focus=false
+        if [[ -n "${GROVE_FOCUS_BRANCH:-}" ]]; then
+            [[ "$name" == "$GROVE_FOCUS_BRANCH" ]] && should_focus=true
+        elif [[ "$i" -eq 0 ]]; then
+            should_focus=true
+        fi
 
-        if [[ "$i" -eq 0 ]]; then
+        if $should_focus; then
             if [[ "$bar_mode" == "stock" ]]; then
                 printf '    tab name="%s" color="%s" focus=true {\n' "$esc_name" "$tab_color" >> "$tabs_file"
             else
@@ -404,7 +408,7 @@ generate_layout() {
 
         printf '                pane command="%s" name="AI Agent" size="60%%" {\n' "$esc_ai" >> "$tabs_file"
         printf '                    cwd "%s"\n' "$esc_path" >> "$tabs_file"
-        if [[ "$i" -eq 0 ]]; then
+        if $should_focus; then
             printf '                    focus true\n' >> "$tabs_file"
         fi
         printf '                }\n' >> "$tabs_file"
@@ -416,26 +420,23 @@ generate_layout() {
         printf '    }\n\n' >> "$tabs_file"
     done
 
-    python3 - "$template_file" "$tabs_file" "$gh_panes_file" "$tab_template_file" "$esc_script_dir" "$esc_repo" <<'PY'
+    python3 - "$template_file" "$tabs_file" "$tab_template_file" "$esc_script_dir" "$esc_repo" <<'PY'
 import pathlib
 import sys
 
 template_path = pathlib.Path(sys.argv[1])
 tabs_path = pathlib.Path(sys.argv[2])
-gh_panes_path = pathlib.Path(sys.argv[3])
-tab_template_path = pathlib.Path(sys.argv[4])
-grove_dir = sys.argv[5]
-repo_path = sys.argv[6]
+tab_template_path = pathlib.Path(sys.argv[3])
+grove_dir = sys.argv[4]
+repo_path = sys.argv[5]
 
 template = template_path.read_text()
 tabs = tabs_path.read_text()
-gh_panes = gh_panes_path.read_text()
 tab_template = tab_template_path.read_text()
 rendered = template.replace("{{GROVE_INSTALL_DIR}}", grove_dir)
 rendered = rendered.replace("{{REPO_PATH}}", repo_path)
 rendered = rendered.replace("    // {{DEFAULT_TAB_TEMPLATE}}", tab_template.rstrip())
 rendered = rendered.replace("    // {{WORKTREE_TABS}}", tabs.rstrip())
-rendered = rendered.replace("                // {{GITHUB_STACK_PANES}}", gh_panes.rstrip())
 print(rendered)
 PY
 }
@@ -461,7 +462,7 @@ LAYOUT_FILE="/tmp/grove-layout-${REPO_NAME}.kdl"
 echo "$LAYOUT_CONTENT" > "$LAYOUT_FILE"
 
 ZELLIJ_SESSION_NAME="${ZELLIJ_SESSION_NAME:-}"
-if [[ -n "$ZELLIJ_SESSION_NAME" ]] || [[ "${ZELLIJ:-}" == "0" ]]; then
+if [[ "${ZELLIJ:-}" == "0" ]]; then
     echo ""
     echo "Error: already inside Zellij session '${ZELLIJ_SESSION_NAME:-unknown}'."
     echo "Run this from outside Zellij, or detach first (Ctrl+o, d)."
@@ -498,7 +499,13 @@ cleanup_zellij_session() {
     done
 }
 
-cleanup_zellij_session "$SESSION_NAME" 5
+if zellij list-sessions 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | grep -q "^${SESSION_NAME}"; then
+    if ! $FRESH_SESSION; then
+        echo "Attaching to existing Zellij workspace: $SESSION_NAME"
+        exec zellij attach "$SESSION_NAME"
+    fi
+    cleanup_zellij_session "$SESSION_NAME" 5
+fi
 
 echo "Launching Zellij workspace: $SESSION_NAME"
 echo ""

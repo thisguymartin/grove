@@ -5,10 +5,11 @@ Grove is a bash-first terminal workspace that wires together git worktrees, Zell
 ## Entry Flow
 
 ```text
-grove [path] [ai-editor]
--> launch-grove.sh [path] [ai-editor]
+grove [up] [--fresh] [ai-editor] [path]
+-> launch-grove.sh
 -> lib/ai-agent.sh resolves the agent
--> launch-worktrees.sh --ai <editor> [path]
+-> attach existing repo session
+-> or launch-worktrees.sh --ai <editor> [path]
 ```
 
 ## Runtime Model
@@ -20,8 +21,8 @@ grove [path] [ai-editor]
 3. Chooses the Zellij bar mode from `GROVE_ZELLIJ_BAR`.
 4. Generates a Zellij layout dynamically.
 5. Builds a deterministic session name capped at Zellij's 24-character limit.
-6. Replaces any existing Grove session for that repo.
-7. Launches a new Zellij session.
+6. Attaches when that repository session already exists.
+7. Creates a new session only when missing; `--fresh` explicitly replaces it.
 
 The default bar mode is `zjstatus`. If `vendor/zjstatus/zjstatus.wasm` is missing, Grove falls back to stock Zellij bars and prints a warning. `GROVE_ZELLIJ_BAR=stock` forces the native `zellij:tab-bar` and `zellij:status-bar`.
 
@@ -35,21 +36,18 @@ Each worktree becomes its own Zellij tab.
 
 The tab names are plain branch names or short commit SHAs for detached worktrees. The custom bar handles color and mode state, so Grove no longer prefixes tab names with emoji.
 
-## Overview Surfaces
+## Overview Surface
 
-The dashboard scripts provide live visibility across all active worktrees.
+The default Overview is one pane refreshed every 30 seconds. It runs the executable in `GROVE_STATUS_BIN` when configured, otherwise it falls back to `worktree-status.sh`.
 
-- Left (core): `worktree-status.sh`, `ai-status.sh`
-- Right (stacked): `pr-status.sh`, `ci-status.sh`, `stash-status.sh`, `resource-monitor.sh`
-- GitHub panes are rendered only when `gh` is installed and authenticated.
+The experimental Go flow is:
 
-- `worktree-status.sh`: worktree branch/dirty state
-- `ai-status.sh`: running AI agents and Claude token analytics
-- `pr-status.sh`: pull request / CI status per branch
-- `ci-status.sh`: recent GitHub Actions runs for the repo
-- `stash-status.sh`: global stash list and dirty-worktree tracker
-- `resource-monitor.sh`: CPU and memory usage for AI agents and tooling
-- `vendor/zjstatus/zjstatus.wasm`: vendored custom Zellij bar plugin
+```text
+git + gh + Zellij pane JSON -> app.Service -> Workspace snapshot
+                                  -> compact text | full text | JSON
+```
+
+Git failures are fatal. Missing or failing optional GitHub/Zellij integrations are recorded as `unknown`; they never produce guessed PR actions. The older token, PR, CI, stash, and resource scripts remain callable as diagnostics but do not start by default.
 
 ## Repository Layout
 
@@ -81,6 +79,7 @@ Current top-level runtime files:
 | `AI_EDITOR` | saved config | Per-process override for the default AI agent |
 | `GROVE_ZELLIJ_BAR` | `zjstatus` | Zellij bar mode: `zjstatus` or `stock` |
 | `GROVE_DIR` | `$HOME/.local/share/grove` | Install location |
+| `GROVE_STATUS_BIN` | unset | Executable experimental Go status renderer |
 
 The installer writes `default_ai=<codex|opencode|claude|gemini|none>` to `${XDG_CONFIG_HOME:-$HOME/.config}/grove/config`. The parser reads only the validated value and never sources the file as shell code. Manual checkouts without this file retain the old OpenCode default.
 

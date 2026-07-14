@@ -28,10 +28,12 @@ source "$SCRIPT_DIR/lib/session.sh"
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || {
+CURRENT_WORKTREE_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || {
     echo "Error: not inside a git repository."
     exit 1
 }
+REPO_ROOT="$(git -C "$CURRENT_WORKTREE_ROOT" worktree list --porcelain | awk '/^worktree / { print substr($0, 10); exit }')"
+REPO_ROOT="${REPO_ROOT:-$CURRENT_WORKTREE_ROOT}"
 
 REPO_NAME="$(basename "$REPO_ROOT")"
 PARENT_DIR="$(dirname "$REPO_ROOT")"
@@ -862,6 +864,14 @@ cmd_open() {
 # Usage: cmd_go <branch>
 cmd_go() {
     local branch="${1:?Usage: git-worktree.sh go <branch>}"
+    local wt_path
+    wt_path="$(resolve_worktree_path "$branch")"
+    if [[ -z "$wt_path" ]]; then
+        echo "No worktree found for branch '$branch'." >&2
+        echo "Run 'grove pick' to choose an available worktree." >&2
+        exit 1
+    fi
+
     if [[ -n "${ZELLIJ:-}" ]]; then
         zellij action go-to-tab-name "$branch" || {
             echo "No Zellij tab named '$branch'. Run 'grove up' first, or 'grove agent $branch'." >&2
@@ -871,11 +881,15 @@ cmd_go() {
         local session
         session=$(grove_session)
         if ! zellij list-sessions 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | grep -q "^${session}"; then
-            echo "No running Zellij session '$session'. Launch it with 'grove up'." >&2
+            echo "Launching '$session' with '$branch' focused."
+            GROVE_FOCUS_BRANCH="$branch" exec "$SCRIPT_DIR/launch-grove.sh" up
+        fi
+        if ! zellij --session "$session" action go-to-tab-name "$branch"; then
+            echo "The session '$session' has no tab named '$branch'. Run 'grove up --fresh' to rebuild it." >&2
             exit 1
         fi
-        echo "Attaching to '$session' — switch to the '$branch' tab once inside (Alt+←/→)."
-        zellij attach "$session"
+        echo "Attaching to '$session' at '$branch'."
+        exec zellij attach "$session"
     fi
 }
 
@@ -914,20 +928,30 @@ cmd_agents() {
     done
 }
 
-# Live worktree status dashboard (refreshes every 2s).
-# Usage: cmd_status [repo-path]
+# Print one repository status snapshot.
+# Usage: cmd_status [repo-path] [--full | --json]
 cmd_status() {
+    if [[ -n "${GROVE_STATUS_BIN:-}" && -x "$GROVE_STATUS_BIN" ]]; then
+        exec "$GROVE_STATUS_BIN" status "$@"
+    fi
+
     local script="$SCRIPT_DIR/worktree-status.sh"
     if [[ ! -f "$script" ]]; then
         echo "Error: worktree-status.sh not found at $script" >&2
         exit 1
     fi
-    local target="${1:-$(pwd)}"
-    while true; do
-        clear
-        bash "$script" "$target" || true
-        sleep 2
+
+    local arg
+    for arg in "$@"; do
+        if [[ "$arg" == "--full" || "$arg" == "--json" ]]; then
+            echo "The Bash fallback only supports compact text status." >&2
+            echo "Set GROVE_STATUS_BIN to use '$arg'." >&2
+            exit 2
+        fi
     done
+
+    local target="${1:-$(pwd)}"
+    exec bash "$script" "$target"
 }
 
 # Launch the full Grove workspace (delegates to launch-grove.sh).
