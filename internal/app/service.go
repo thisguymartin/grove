@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/thisguymartin/grove/internal/domain/agent"
 	"github.com/thisguymartin/grove/internal/domain/review"
@@ -14,6 +16,7 @@ type GitClient interface {
 	Root(context.Context, string) (workspace.RepoRoot, error)
 	BaseBranch(context.Context, workspace.RepoRoot) (workspace.BranchName, error)
 	Worktrees(context.Context, workspace.RepoRoot) ([]workspace.Worktree, error)
+	Inspect(context.Context, workspace.RepoRoot, workspace.BranchName, []workspace.Worktree) (map[workspace.WorktreePath]workspace.GitStatus, error)
 }
 
 type Reviews interface {
@@ -21,27 +24,29 @@ type Reviews interface {
 }
 
 type Agents interface {
-	Sessions(context.Context) ([]agent.Session, error)
+	Sessions(context.Context, workspace.RepoRoot, []workspace.Worktree) ([]agent.Session, error)
 }
 
 type ServiceConfig struct {
 	Git     GitClient
 	Reviews Reviews
 	Agents  Agents
+	Now     func() time.Time
 }
 
 type Service struct {
 	git     GitClient
 	reviews Reviews
 	agents  Agents
+	now     func() time.Time
 }
 
 func NewService(cfg ServiceConfig) *Service {
-	return &Service{
-		git:     cfg.Git,
-		reviews: cfg.Reviews,
-		agents:  cfg.Agents,
+	now := cfg.Now
+	if now == nil {
+		now = time.Now
 	}
+	return &Service{git: cfg.Git, reviews: cfg.Reviews, agents: cfg.Agents, now: now}
 }
 
 func (s *Service) Status(ctx context.Context, path string) (workspace.Workspace, error) {
@@ -53,86 +58,135 @@ func (s *Service) Status(ctx context.Context, path string) (workspace.Workspace,
 	if err != nil {
 		return workspace.Workspace{}, fmt.Errorf("resolve repo root: %w", err)
 	}
-
 	base, err := s.git.BaseBranch(ctx, root)
 	if err != nil {
 		return workspace.Workspace{}, fmt.Errorf("resolve base branch: %w", err)
 	}
-
 	worktrees, err := s.git.Worktrees(ctx, root)
 	if err != nil {
 		return workspace.Workspace{}, fmt.Errorf("list worktrees: %w", err)
 	}
+	gitStatuses, err := s.git.Inspect(ctx, root, base, worktrees)
+	if err != nil {
+		return workspace.Workspace{}, fmt.Errorf("inspect worktrees: %w", err)
+	}
+	repositoryRoot := root
+	if len(worktrees) > 0 && worktrees[0].Path != "" {
+		repositoryRoot = workspace.RepoRoot(worktrees[0].Path)
+	}
 
-	var prs []review.PullRequest
+	integrations := workspace.Integrations{
+		Git:    workspace.IntegrationHealth{State: workspace.IntegrationAvailable},
+		GitHub: workspace.IntegrationHealth{State: workspace.IntegrationUnknown, Reason: "not configured"},
+		Zellij: workspace.IntegrationHealth{State: workspace.IntegrationUnknown, Reason: "not configured"},
+	}
+	prs := map[workspace.BranchName]review.PullRequest{}
+	prKnown := false
 	if s.reviews != nil {
-		var err error
-		prs, err = s.reviews.PullRequests(ctx, root)
-		if err != nil {
-			if !isOptionalToolUnavailable(err) {
-				return workspace.Workspace{}, fmt.Errorf("load pull requests: %w", err)
-			}
-			prs = nil
+		rows, reviewErr := s.reviews.PullRequests(ctx, root)
+		if reviewErr != nil {
+			integrations.GitHub.Reason = conciseReason(reviewErr)
+		} else {
+			prKnown = true
+			integrations.GitHub = workspace.IntegrationHealth{State: workspace.IntegrationAvailable}
+			prs = pullRequestsByBranch(rows)
 		}
 	}
 
+	var sessions []agent.Session
 	if s.agents != nil {
-		if _, err := s.agents.Sessions(ctx); err != nil {
-			// Agent sessions are not surfaced in the workspace snapshot yet, so
-			// process lookup failures degrade silently until there is a field for
-			// degraded agent state.
+		rows, agentErr := s.agents.Sessions(ctx, root, worktrees)
+		if agentErr != nil {
+			integrations.Zellij.Reason = conciseReason(agentErr)
+		} else {
+			sessions = rows
+			integrations.Zellij = workspace.IntegrationHealth{State: workspace.IntegrationAvailable}
 		}
 	}
 
-	prBranches := pullRequestBranches(prs)
 	statuses := make([]workspace.WorktreeStatus, 0, len(worktrees))
 	for _, worktree := range worktrees {
-		statuses = append(statuses, workspace.WorktreeStatus{
-			Worktree: worktree,
-			Clean:    true,
-			HasPR:    hasPullRequest(worktree, base, prBranches),
-			Checks:   workspace.CheckStateUnknown,
-		})
+		gitStatus := gitStatuses[worktree.Path]
+		status := workspace.WorktreeStatus{
+			Worktree:   worktree,
+			Clean:      gitStatus.DirtyFiles == 0,
+			DirtyFiles: gitStatus.DirtyFiles,
+			Ahead:      gitStatus.Ahead,
+			Behind:     gitStatus.Behind,
+			Merged:     gitStatus.Merged,
+			PRKnown:    prKnown,
+			Checks:     workspace.CheckStateUnknown,
+		}
+		if pr, ok := prs[worktree.Branch]; ok {
+			status.HasPR = true
+			status.PRNumber = pr.Number
+			status.PRURL = pr.URL
+			status.PRState = strings.ToLower(pr.State)
+			status.Checks = checkState(pr.Checks)
+			status.CheckDetails = append([]string(nil), pr.CheckDetails...)
+			status.Merged = status.Merged || strings.EqualFold(pr.State, "merged")
+		}
+		status.PREligible = prKnown && status.Ahead > 0 && !status.Merged && !status.HasPR && worktree.Branch != "" && worktree.Branch != base && !worktree.Bare
+		for _, session := range sessions {
+			if session.Branch != string(worktree.Branch) && !pathWithin(session.Path, string(worktree.Path)) {
+				continue
+			}
+			if status.Agent == "" && session.Editor != "" {
+				status.Agent = session.Editor
+			}
+			status.Panes = append(status.Panes, workspace.Pane{Tab: session.Tab, PaneID: session.PaneID, Command: session.Command, Path: session.Path})
+		}
+		statuses = append(statuses, status)
 	}
 
 	return workspace.Workspace{
-		Root:        root,
-		Base:        base,
-		Worktrees:   worktrees,
-		Statuses:    statuses,
-		NextActions: workspace.ScoreNextActions(statuses),
+		SchemaVersion: 1,
+		GeneratedAt:   s.now().UTC(),
+		Repository:    workspace.Repository{Root: repositoryRoot, Base: base},
+		Integrations:  integrations,
+		Statuses:      statuses,
+		NextActions:   workspace.ScoreNextActions(statuses),
+		Root:          repositoryRoot,
+		Base:          base,
+		Worktrees:     worktrees,
 	}, nil
 }
 
-func baselineHasPR(worktree workspace.Worktree, base workspace.BranchName) bool {
-	// Until PR metadata lands, treat branchless and bare worktrees as PR-ineligible.
-	return worktree.Branch == base || worktree.Branch == "" || worktree.Bare
-}
-
-func hasPullRequest(worktree workspace.Worktree, base workspace.BranchName, prBranches map[workspace.BranchName]struct{}) bool {
-	if baselineHasPR(worktree, base) {
-		return true
-	}
-
-	_, ok := prBranches[worktree.Branch]
-	return ok
-}
-
-func pullRequestBranches(prs []review.PullRequest) map[workspace.BranchName]struct{} {
-	branches := make(map[workspace.BranchName]struct{}, len(prs))
-	for _, pr := range prs {
-		if pr.Branch != "" {
-			branches[workspace.BranchName(pr.Branch)] = struct{}{}
+func pullRequestsByBranch(rows []review.PullRequest) map[workspace.BranchName]review.PullRequest {
+	result := make(map[workspace.BranchName]review.PullRequest, len(rows))
+	for _, pr := range rows {
+		branch := workspace.BranchName(pr.Branch)
+		if branch == "" {
+			continue
+		}
+		current, exists := result[branch]
+		if !exists || (!strings.EqualFold(current.State, "open") && strings.EqualFold(pr.State, "open")) {
+			result[branch] = pr
 		}
 	}
-	return branches
+	return result
 }
 
-type optionalToolUnavailable interface {
-	OptionalToolUnavailable() bool
+func checkState(value string) workspace.CheckState {
+	switch workspace.CheckState(strings.ToLower(value)) {
+	case workspace.CheckStatePassing:
+		return workspace.CheckStatePassing
+	case workspace.CheckStatePending:
+		return workspace.CheckStatePending
+	case workspace.CheckStateFailed:
+		return workspace.CheckStateFailed
+	default:
+		return workspace.CheckStateUnknown
+	}
 }
 
-func isOptionalToolUnavailable(err error) bool {
-	var unavailable optionalToolUnavailable
-	return errors.As(err, &unavailable) && unavailable.OptionalToolUnavailable()
+func pathWithin(path, root string) bool {
+	return path == root || strings.HasPrefix(path, strings.TrimRight(root, "/")+"/")
+}
+
+func conciseReason(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }

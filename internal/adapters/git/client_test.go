@@ -8,6 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/thisguymartin/grove/internal/domain/workspace"
 )
 
 func TestClientRootUsesRevParse(t *testing.T) {
@@ -155,6 +158,46 @@ func TestClientWorktreesPropagatesParserError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "HEAD before worktree") {
 		t.Fatalf("Worktrees error = %q, want parser context", err.Error())
+	}
+}
+
+func TestClientInspectLoadsDirtyCountsUpstreamCountsAndMergedState(t *testing.T) {
+	runner := &fakeRunner{output: map[string]string{
+		"git -C /repo/grove branch --merged main --format=%(refname:short)":  "main\nfeat/done\n",
+		"git -C /repo/grove status --porcelain":                              "",
+		"git -C /repo/dirty status --porcelain":                              " M one.go\n?? two.go\n",
+		"git -C /repo/grove rev-list --left-right --count main...feat/dirty": "3\t2\n",
+		"git -C /repo/done status --porcelain":                               "",
+		"git -C /repo/grove rev-list --left-right --count main...feat/done":  "0\t1\n",
+	}}
+	client := NewClient(runner)
+
+	got, err := client.Inspect(context.Background(), "/repo/grove", "main", []workspace.Worktree{
+		{Path: "/repo/grove", Branch: "main"},
+		{Path: "/repo/dirty", Branch: "feat/dirty"},
+		{Path: "/repo/done", Branch: "feat/done"},
+	})
+	if err != nil {
+		t.Fatalf("Inspect returned error: %v", err)
+	}
+	if status := got["/repo/dirty"]; status.DirtyFiles != 2 || status.Behind != 3 || status.Ahead != 2 || status.Merged {
+		t.Fatalf("dirty status = %#v", status)
+	}
+	if status := got["/repo/done"]; !status.Merged || status.Ahead != 1 {
+		t.Fatalf("done status = %#v", status)
+	}
+}
+
+func TestExecRunnerHonorsConfiguredTimeout(t *testing.T) {
+	_, err := (ExecRunner{Timeout: 20 * time.Millisecond}).Run(context.Background(), "sh", "-c", "sleep 1")
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Run error = %v, want context deadline exceeded", err)
+	}
+}
+
+func TestDefaultTimeoutIsThreeSeconds(t *testing.T) {
+	if defaultTimeout != 3*time.Second {
+		t.Fatalf("default timeout = %s", defaultTimeout)
 	}
 }
 

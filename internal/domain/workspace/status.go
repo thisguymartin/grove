@@ -18,24 +18,49 @@ const (
 	NextActionOpenDiff   NextActionKind = "open_diff"
 	NextActionSync       NextActionKind = "sync"
 	NextActionCreatePR   NextActionKind = "create_pr"
+	NextActionRemove     NextActionKind = "remove_worktree"
 	NextActionIdle       NextActionKind = "idle"
 )
 
 type WorktreeStatus struct {
-	Worktree   Worktree   `json:"worktree"`
-	Clean      bool       `json:"clean"`
-	DirtyFiles int        `json:"dirty_files"`
-	Ahead      int        `json:"ahead"`
-	Behind     int        `json:"behind"`
-	HasPR      bool       `json:"has_pr"`
-	Checks     CheckState `json:"checks"`
+	Worktree     Worktree   `json:"worktree"`
+	Clean        bool       `json:"clean"`
+	DirtyFiles   int        `json:"dirty_files"`
+	Ahead        int        `json:"ahead"`
+	Behind       int        `json:"behind"`
+	Merged       bool       `json:"merged"`
+	PRKnown      bool       `json:"pr_known"`
+	PREligible   bool       `json:"pr_eligible"`
+	HasPR        bool       `json:"has_pr"`
+	PRNumber     int        `json:"pr_number,omitempty"`
+	PRURL        string     `json:"pr_url,omitempty"`
+	PRState      string     `json:"pr_state,omitempty"`
+	Checks       CheckState `json:"checks"`
+	CheckDetails []string   `json:"check_details,omitempty"`
+	Agent        string     `json:"agent,omitempty"`
+	Panes        []Pane     `json:"panes,omitempty"`
+}
+
+type GitStatus struct {
+	DirtyFiles int
+	Ahead      int
+	Behind     int
+	Merged     bool
+}
+
+type Pane struct {
+	Tab     string `json:"tab"`
+	PaneID  int    `json:"pane_id"`
+	Command string `json:"command"`
+	Path    string `json:"path"`
 }
 
 type NextAction struct {
-	Branch BranchName     `json:"branch"`
-	Kind   NextActionKind `json:"kind"`
-	Label  string         `json:"label"`
-	Score  int            `json:"score"`
+	Branch       BranchName     `json:"branch"`
+	WorktreePath WorktreePath   `json:"worktree_path"`
+	Kind         NextActionKind `json:"kind"`
+	Label        string         `json:"label"`
+	Score        int            `json:"score"`
 }
 
 func ScoreNextActions(statuses []WorktreeStatus) []NextAction {
@@ -46,8 +71,10 @@ func ScoreNextActions(statuses []WorktreeStatus) []NextAction {
 
 	scored := make([]scoredAction, 0, len(statuses))
 	for _, status := range statuses {
+		action := scoreStatus(status)
+		action.WorktreePath = status.Worktree.Path
 		scored = append(scored, scoredAction{
-			action: scoreStatus(status),
+			action: action,
 			path:   status.Worktree.Path,
 		})
 	}
@@ -75,10 +102,12 @@ func scoreStatus(status WorktreeStatus) NextAction {
 		return NextAction{Branch: branch, Kind: NextActionOpenChecks, Label: "open failed checks", Score: 500}
 	case status.DirtyFiles > 0:
 		return NextAction{Branch: branch, Kind: NextActionOpenDiff, Label: "review dirty files", Score: 400}
-	case status.Behind > 0:
+	case status.Behind > 0 && !status.Merged:
 		return NextAction{Branch: branch, Kind: NextActionSync, Label: "sync with base", Score: 300}
-	case !status.HasPR:
+	case status.PREligible && !status.HasPR && !status.Merged:
 		return NextAction{Branch: branch, Kind: NextActionCreatePR, Label: "create pull request", Score: 200}
+	case status.Merged:
+		return NextAction{Branch: branch, Kind: NextActionRemove, Label: "remove merged worktree", Score: 100}
 	default:
 		return NextAction{Branch: branch, Kind: NextActionIdle, Label: "idle", Score: 0}
 	}

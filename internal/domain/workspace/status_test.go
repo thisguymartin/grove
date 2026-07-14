@@ -28,35 +28,28 @@ func TestScoreNextActionPriority(t *testing.T) {
 	}
 }
 
-func TestScoreNextActionCreatePRUsesHasPRState(t *testing.T) {
-	tests := []struct {
-		name   string
-		branch BranchName
-	}{
-		{name: "base named branch", branch: "main"},
-		{name: "empty branch", branch: ""},
+func TestScoreNextActionCreatePRRequiresEligibility(t *testing.T) {
+	got := ScoreNextActions([]WorktreeStatus{
+		{Worktree: Worktree{Branch: "feat/ready"}, Clean: true, Ahead: 2, PRKnown: true, PREligible: true},
+		{Worktree: Worktree{Branch: "feat/unknown"}, Clean: true, Ahead: 2},
+		{Worktree: Worktree{Branch: "feat/merged"}, Clean: true, Ahead: 2, PRKnown: true, PREligible: true, Merged: true},
+	})
+
+	if got[0].Branch != "feat/ready" || got[0].Kind != NextActionCreatePR {
+		t.Fatalf("first action = %#v, want eligible branch create PR", got[0])
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := ScoreNextActions([]WorktreeStatus{
-				{Worktree: Worktree{Branch: tt.branch}, Clean: true, HasPR: false},
-			})
-
-			if len(got) != 1 {
-				t.Fatalf("len(actions) = %d, want 1", len(got))
-			}
-			if got[0].Kind != NextActionCreatePR {
-				t.Fatalf("action = %#v, want create PR", got[0])
-			}
-		})
+	if got[1].Branch != "feat/merged" || got[1].Kind != NextActionRemove {
+		t.Fatalf("second action = %#v, want merged branch removal", got[1])
+	}
+	if got[2].Branch != "feat/unknown" || got[2].Kind != NextActionIdle {
+		t.Fatalf("third action = %#v, want unknown GitHub state idle", got[2])
 	}
 }
 
 func TestScoreNextActionsBreaksTiesByBranch(t *testing.T) {
 	got := ScoreNextActions([]WorktreeStatus{
-		{Worktree: Worktree{Path: "/repo/.worktrees/zeta", Branch: "zeta"}, Clean: true, HasPR: false},
-		{Worktree: Worktree{Path: "/repo/.worktrees/alpha", Branch: "alpha"}, Clean: true, HasPR: false},
+		{Worktree: Worktree{Path: "/repo/.worktrees/zeta", Branch: "zeta"}, Clean: true, PREligible: true},
+		{Worktree: Worktree{Path: "/repo/.worktrees/alpha", Branch: "alpha"}, Clean: true, PREligible: true},
 	})
 
 	if len(got) != 2 {

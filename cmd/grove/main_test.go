@@ -7,6 +7,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/thisguymartin/grove/internal/domain/workspace"
 )
@@ -14,194 +15,122 @@ import (
 type fakeStatusService struct {
 	snapshot workspace.Workspace
 	err      error
-	called   bool
 	path     string
 }
 
 func (f *fakeStatusService) Status(_ context.Context, path string) (workspace.Workspace, error) {
-	f.called = true
 	f.path = path
-	if f.err != nil {
-		return workspace.Workspace{}, f.err
-	}
-	return f.snapshot, nil
+	return f.snapshot, f.err
 }
 
-func TestRunHelpPrintsUsage(t *testing.T) {
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-
-	code := run(context.Background(), []string{"help"}, &stdout, &stderr)
-	if code != 0 {
-		t.Fatalf("run help exit code = %d, want 0; stderr=%q", code, stderr.String())
+func TestRunStatusSupportsCompactFullAndJSONWithFlexiblePathOrdering(t *testing.T) {
+	tests := []struct {
+		name     string
+		args     []string
+		wantPath string
+		wantText string
+		wantJSON bool
+	}{
+		{name: "compact", args: []string{"status"}, wantPath: ".", wantText: "BRANCH"},
+		{name: "full before path", args: []string{"status", "--full", "/repo"}, wantPath: "/repo", wantText: "Integrations"},
+		{name: "full after path", args: []string{"status", "/repo", "--full"}, wantPath: "/repo", wantText: "Integrations"},
+		{name: "json", args: []string{"status", "/repo", "--json"}, wantPath: "/repo", wantJSON: true},
 	}
-
-	output := stdout.String()
-	for _, want := range []string{"Usage:", "grove status --json", "grove tui", "grove ls"} {
-		if !strings.Contains(output, want) {
-			t.Fatalf("help output missing %q:\n%s", want, output)
-		}
-	}
-}
-
-func TestRunVersionPrintsVersion(t *testing.T) {
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-
-	code := run(context.Background(), []string{"version"}, &stdout, &stderr)
-	if code != 0 {
-		t.Fatalf("run version exit code = %d, want 0; stderr=%q", code, stderr.String())
-	}
-
-	if got := strings.TrimSpace(stdout.String()); got == "" || got == "dev" {
-		t.Fatalf("version output = %q, want non-empty version label", got)
-	}
-}
-
-func TestRunPlaceholderCommandsReportNotWired(t *testing.T) {
-	for _, cmd := range []string{"status", "ls", "tui"} {
-		t.Run(cmd, func(t *testing.T) {
-			var stdout bytes.Buffer
-			var stderr bytes.Buffer
-
-			code := run(context.Background(), []string{cmd}, &stdout, &stderr)
-			if code != 2 {
-				t.Fatalf("%s exit code = %d, want 2", cmd, code)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := &fakeStatusService{snapshot: sampleSnapshot()}
+			useService(t, svc)
+			var stdout, stderr bytes.Buffer
+			code := run(context.Background(), tt.args, &stdout, &stderr)
+			if code != 0 {
+				t.Fatalf("exit code = %d; stderr=%q", code, stderr.String())
 			}
-			if !strings.Contains(stderr.String(), cmd+" is not wired yet") {
-				t.Fatalf("stderr missing not-wired message:\n%s", stderr.String())
+			if svc.path != tt.wantPath {
+				t.Fatalf("path = %q, want %q", svc.path, tt.wantPath)
 			}
-			if stdout.Len() != 0 {
-				t.Fatalf("stdout = %q, want empty", stdout.String())
+			if tt.wantJSON {
+				var got workspace.Workspace
+				if err := json.Unmarshal(stdout.Bytes(), &got); err != nil || got.SchemaVersion != 1 {
+					t.Fatalf("JSON output = %q, error=%v", stdout.String(), err)
+				}
+			} else if !strings.Contains(stdout.String(), tt.wantText) {
+				t.Fatalf("output missing %q:\n%s", tt.wantText, stdout.String())
 			}
 		})
 	}
 }
 
-func TestRunStatusJSONPrintsSnapshot(t *testing.T) {
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	svc := &fakeStatusService{
-		snapshot: workspace.Workspace{
-			Root: "/fake/repo",
-			Base: "main",
-			Worktrees: []workspace.Worktree{
-				{Path: "/fake/repo", Branch: "main", Head: "abc"},
-				{Path: "/fake/repo/.worktrees/feat-with-pr", Branch: "feat/with-pr", Head: "def"},
-			},
-			Statuses: []workspace.WorktreeStatus{
-				{
-					Worktree: workspace.Worktree{Path: "/fake/repo", Branch: "main", Head: "abc"},
-					Clean:    true,
-					HasPR:    true,
-					Checks:   workspace.CheckStateUnknown,
-				},
-				{
-					Worktree: workspace.Worktree{Path: "/fake/repo/.worktrees/feat-with-pr", Branch: "feat/with-pr", Head: "def"},
-					Clean:    true,
-					HasPR:    true,
-					Checks:   workspace.CheckStateUnknown,
-				},
-			},
-			NextActions: []workspace.NextAction{
-				{Branch: "main", Kind: workspace.NextActionIdle, Label: "idle", Score: 0},
-				{Branch: "feat/with-pr", Kind: workspace.NextActionIdle, Label: "idle", Score: 0},
-			},
-		},
-	}
-	originalNewStatusService := newStatusService
-	newStatusService = func() statusService {
-		return svc
-	}
-	t.Cleanup(func() {
-		newStatusService = originalNewStatusService
-	})
-
-	code := run(context.Background(), []string{"status", "--json"}, &stdout, &stderr)
-	if code != 0 {
-		t.Fatalf("status --json exit code = %d, want 0; stderr=%q", code, stderr.String())
-	}
-
-	output := stdout.Bytes()
-	var snapshot workspace.Workspace
-	if err := json.NewDecoder(bytes.NewReader(output)).Decode(&snapshot); err != nil {
-		t.Fatalf("status --json output is not workspace JSON: %v\n%s", err, string(output))
-	}
-	if !svc.called {
-		t.Fatal("status service was not called")
-	}
-	if svc.path != "." {
-		t.Fatalf("status service path = %q, want .", svc.path)
-	}
-	if snapshot.Root != "/fake/repo" {
-		t.Fatalf("Root = %q, want /fake/repo", snapshot.Root)
-	}
-	if len(snapshot.Statuses) != 2 {
-		t.Fatalf("len(Statuses) = %d, want 2", len(snapshot.Statuses))
-	}
-	if !snapshot.Statuses[1].HasPR {
-		t.Fatalf("feature status HasPR = false, want true: %#v", snapshot.Statuses[1])
-	}
-	if len(snapshot.NextActions) != 2 {
-		t.Fatalf("len(NextActions) = %d, want 2", len(snapshot.NextActions))
-	}
-	if snapshot.NextActions[1].Branch != "feat/with-pr" || snapshot.NextActions[1].Kind != workspace.NextActionIdle {
-		t.Fatalf("feature next action = %#v, want injected idle action", snapshot.NextActions[1])
+func TestRunStatusInvalidCombinationsExitTwo(t *testing.T) {
+	for _, args := range [][]string{
+		{"status", "--full", "--json"},
+		{"status", "one", "two"},
+		{"status", "--porcelain"},
+	} {
+		var stdout, stderr bytes.Buffer
+		if code := run(context.Background(), args, &stdout, &stderr); code != 2 {
+			t.Fatalf("args=%v exit code=%d, want 2", args, code)
+		}
+		if stdout.Len() != 0 || stderr.Len() == 0 {
+			t.Fatalf("args=%v stdout=%q stderr=%q", args, stdout.String(), stderr.String())
+		}
 	}
 }
 
-func TestRunStatusJSONReturnsErrorWhenServiceFails(t *testing.T) {
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	svc := &fakeStatusService{err: errors.New("load status failed")}
-	originalNewStatusService := newStatusService
-	newStatusService = func() statusService {
-		return svc
+func TestRunStatusServiceFailureExitsOne(t *testing.T) {
+	svc := &fakeStatusService{err: errors.New("not a git repository")}
+	useService(t, svc)
+	var stdout, stderr bytes.Buffer
+	if code := run(context.Background(), []string{"status"}, &stdout, &stderr); code != 1 {
+		t.Fatalf("exit code = %d", code)
 	}
-	t.Cleanup(func() {
-		newStatusService = originalNewStatusService
-	})
-
-	code := run(context.Background(), []string{"status", "--json"}, &stdout, &stderr)
-	if code != 1 {
-		t.Fatalf("status --json exit code = %d, want 1", code)
-	}
-	if stdout.Len() != 0 {
-		t.Fatalf("stdout = %q, want empty", stdout.String())
-	}
-	if !strings.Contains(stderr.String(), "load status failed") {
-		t.Fatalf("stderr missing service error:\n%s", stderr.String())
+	if !strings.Contains(stderr.String(), "not a git repository") {
+		t.Fatalf("stderr = %q", stderr.String())
 	}
 }
 
-func TestRunStatusUnsupportedFlagsExitTwo(t *testing.T) {
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-
-	code := run(context.Background(), []string{"status", "--porcelain"}, &stdout, &stderr)
-	if code != 2 {
-		t.Fatalf("status unsupported flag exit code = %d, want 2", code)
+func TestRunHelpOnlyAdvertisesThinStatusCLI(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := run(context.Background(), []string{"help"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("exit code = %d", code)
 	}
-	if !strings.Contains(stderr.String(), "unsupported status flags") {
-		t.Fatalf("stderr missing unsupported status flags:\n%s", stderr.String())
+	for _, want := range []string{"grove status [path] [--full | --json]", "grove version"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("help missing %q:\n%s", want, stdout.String())
+		}
 	}
-	if stdout.Len() != 0 {
-		t.Fatalf("stdout = %q, want empty", stdout.String())
+	for _, unwanted := range []string{"grove tui", "grove ls"} {
+		if strings.Contains(stdout.String(), unwanted) {
+			t.Fatalf("help contains %q:\n%s", unwanted, stdout.String())
+		}
 	}
 }
 
 func TestRunUnknownCommandReportsError(t *testing.T) {
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-
-	code := run(context.Background(), []string{"wat"}, &stdout, &stderr)
-	if code != 2 {
-		t.Fatalf("unknown command exit code = %d, want 2", code)
+	var stdout, stderr bytes.Buffer
+	if code := run(context.Background(), []string{"wat"}, &stdout, &stderr); code != 2 {
+		t.Fatalf("exit code = %d", code)
 	}
 	if !strings.Contains(stderr.String(), `unknown command "wat"`) {
-		t.Fatalf("stderr missing unknown command:\n%s", stderr.String())
+		t.Fatalf("stderr = %q", stderr.String())
 	}
-	if stdout.Len() != 0 {
-		t.Fatalf("stdout = %q, want empty", stdout.String())
+}
+
+func useService(t *testing.T, svc statusService) {
+	t.Helper()
+	original := newStatusService
+	newStatusService = func() statusService { return svc }
+	t.Cleanup(func() { newStatusService = original })
+}
+
+func sampleSnapshot() workspace.Workspace {
+	statuses := []workspace.WorktreeStatus{{Worktree: workspace.Worktree{Path: "/repo", Branch: "main"}, Clean: true, PRKnown: true, Checks: workspace.CheckStateUnknown}}
+	return workspace.Workspace{
+		SchemaVersion: 1,
+		GeneratedAt:   time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC),
+		Repository:    workspace.Repository{Root: "/repo", Base: "main"},
+		Integrations: workspace.Integrations{
+			Git: workspace.IntegrationHealth{State: workspace.IntegrationAvailable},
+		},
+		Statuses: statuses, NextActions: workspace.ScoreNextActions(statuses),
 	}
 }

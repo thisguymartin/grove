@@ -18,10 +18,18 @@ type Runner interface {
 	Run(ctx context.Context, cwd string, name string, args ...string) ([]byte, error)
 }
 
-type ExecRunner struct{}
+const defaultTimeout = 5 * time.Second
 
-func (ExecRunner) Run(ctx context.Context, cwd string, name string, args ...string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+type ExecRunner struct {
+	Timeout time.Duration
+}
+
+func (r ExecRunner) Run(ctx context.Context, cwd string, name string, args ...string) ([]byte, error) {
+	timeout := r.Timeout
+	if timeout <= 0 {
+		timeout = defaultTimeout
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, name, args...)
@@ -93,7 +101,7 @@ func NewClient(runner Runner) *Client {
 }
 
 func (c *Client) PullRequests(ctx context.Context, root workspace.RepoRoot) ([]review.PullRequest, error) {
-	out, err := c.runner.Run(ctx, string(root), "gh", "pr", "list", "--json", "number,url,state,isDraft,headRefName")
+	out, err := c.runner.Run(ctx, string(root), "gh", "pr", "list", "--state", "all", "--limit", "100", "--json", "number,url,state,isDraft,headRefName,statusCheckRollup")
 	if err != nil {
 		if isMissingExecutable(err) {
 			return []review.PullRequest{}, UnavailableError{Tool: "gh"}
@@ -102,11 +110,17 @@ func (c *Client) PullRequests(ctx context.Context, root workspace.RepoRoot) ([]r
 	}
 
 	var rows []struct {
-		Number      int    `json:"number"`
-		URL         string `json:"url"`
-		State       string `json:"state"`
-		IsDraft     bool   `json:"isDraft"`
-		HeadRefName string `json:"headRefName"`
+		Number            int    `json:"number"`
+		URL               string `json:"url"`
+		State             string `json:"state"`
+		IsDraft           bool   `json:"isDraft"`
+		HeadRefName       string `json:"headRefName"`
+		StatusCheckRollup []struct {
+			Name       string `json:"name"`
+			Status     string `json:"status"`
+			Conclusion string `json:"conclusion"`
+			State      string `json:"state"`
+		} `json:"statusCheckRollup"`
 	}
 	if err := json.Unmarshal(out, &rows); err != nil {
 		return nil, fmt.Errorf("gh pr list json: %w", err)
@@ -114,15 +128,61 @@ func (c *Client) PullRequests(ctx context.Context, root workspace.RepoRoot) ([]r
 
 	prs := make([]review.PullRequest, 0, len(rows))
 	for _, row := range rows {
+		checks, details := summarizeChecks(row.StatusCheckRollup)
 		prs = append(prs, review.PullRequest{
-			Branch: row.HeadRefName,
-			Number: row.Number,
-			URL:    row.URL,
-			State:  row.State,
-			Draft:  row.IsDraft,
+			Branch:       row.HeadRefName,
+			Number:       row.Number,
+			URL:          row.URL,
+			State:        row.State,
+			Draft:        row.IsDraft,
+			Checks:       checks,
+			CheckDetails: details,
 		})
 	}
 	return prs, nil
+}
+
+func summarizeChecks(rows []struct {
+	Name       string `json:"name"`
+	Status     string `json:"status"`
+	Conclusion string `json:"conclusion"`
+	State      string `json:"state"`
+}) (string, []string) {
+	if len(rows) == 0 {
+		return string(workspace.CheckStateUnknown), nil
+	}
+	state := workspace.CheckStatePassing
+	details := make([]string, 0, len(rows))
+	for _, row := range rows {
+		status := strings.ToUpper(row.Status)
+		conclusion := strings.ToUpper(row.Conclusion)
+		legacyState := strings.ToUpper(row.State)
+		detail := row.Name
+		if detail == "" {
+			detail = "check"
+		}
+		if conclusion != "" {
+			detail += ": " + strings.ToLower(conclusion)
+		} else if legacyState != "" {
+			detail += ": " + strings.ToLower(legacyState)
+		} else {
+			detail += ": " + strings.ToLower(status)
+		}
+		details = append(details, detail)
+		switch {
+		case legacyState == "FAILURE" || legacyState == "ERROR":
+			state = workspace.CheckStateFailed
+		case legacyState == "PENDING" || legacyState == "EXPECTED":
+			if state != workspace.CheckStateFailed {
+				state = workspace.CheckStatePending
+			}
+		case conclusion == "FAILURE" || conclusion == "CANCELLED" || conclusion == "TIMED_OUT" || conclusion == "ACTION_REQUIRED" || conclusion == "STALE" || conclusion == "STARTUP_FAILURE":
+			state = workspace.CheckStateFailed
+		case state != workspace.CheckStateFailed && legacyState == "" && (status != "COMPLETED" || conclusion == ""):
+			state = workspace.CheckStatePending
+		}
+	}
+	return string(state), details
 }
 
 func isMissingExecutable(err error) bool {

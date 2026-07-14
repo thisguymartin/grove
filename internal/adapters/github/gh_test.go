@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"os/exec"
+	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/thisguymartin/grove/internal/domain/review"
 )
@@ -13,9 +15,9 @@ import (
 func TestClientPullRequestsMapsGHJSON(t *testing.T) {
 	runner := &fakeRunner{
 		output: map[string]string{
-			"/repo/grove | gh pr list --json number,url,state,isDraft,headRefName": `[
-				{"number":17,"url":"https://github.com/thisguymartin/grove/pull/17","state":"OPEN","isDraft":false,"headRefName":"feat/go-control-tower"},
-				{"number":18,"url":"https://github.com/thisguymartin/grove/pull/18","state":"OPEN","isDraft":true,"headRefName":"feat/agent-status"}
+			"/repo/grove | gh pr list --state all --limit 100 --json number,url,state,isDraft,headRefName,statusCheckRollup": `[
+				{"number":17,"url":"https://github.com/thisguymartin/grove/pull/17","state":"OPEN","isDraft":false,"headRefName":"feat/go-control-tower","statusCheckRollup":[{"name":"test","status":"COMPLETED","conclusion":"SUCCESS"}]},
+				{"number":18,"url":"https://github.com/thisguymartin/grove/pull/18","state":"MERGED","isDraft":true,"headRefName":"feat/agent-status","statusCheckRollup":[{"name":"lint","state":"FAILURE"}]}
 			]`,
 		},
 	}
@@ -27,24 +29,24 @@ func TestClientPullRequestsMapsGHJSON(t *testing.T) {
 	}
 
 	want := []review.PullRequest{
-		{Branch: "feat/go-control-tower", Number: 17, URL: "https://github.com/thisguymartin/grove/pull/17", State: "OPEN", Draft: false},
-		{Branch: "feat/agent-status", Number: 18, URL: "https://github.com/thisguymartin/grove/pull/18", State: "OPEN", Draft: true},
+		{Branch: "feat/go-control-tower", Number: 17, URL: "https://github.com/thisguymartin/grove/pull/17", State: "OPEN", Draft: false, Checks: "passing", CheckDetails: []string{"test: success"}},
+		{Branch: "feat/agent-status", Number: 18, URL: "https://github.com/thisguymartin/grove/pull/18", State: "MERGED", Draft: true, Checks: "failed", CheckDetails: []string{"lint: failure"}},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("len(PullRequests) = %d, want %d; got=%#v", len(got), len(want), got)
 	}
 	for i := range want {
-		if got[i] != want[i] {
+		if !reflect.DeepEqual(got[i], want[i]) {
 			t.Fatalf("PullRequests[%d] = %#v, want %#v", i, got[i], want[i])
 		}
 	}
-	assertCalled(t, runner, "/repo/grove", "gh pr list --json number,url,state,isDraft,headRefName")
+	assertCalled(t, runner, "/repo/grove", "gh pr list --state all --limit 100 --json number,url,state,isDraft,headRefName,statusCheckRollup")
 }
 
 func TestClientPullRequestsMissingGHReturnsUnavailable(t *testing.T) {
 	runner := &fakeRunner{
 		err: map[string]error{
-			"/repo/grove | gh pr list --json number,url,state,isDraft,headRefName": exec.ErrNotFound,
+			"/repo/grove | gh pr list --state all --limit 100 --json number,url,state,isDraft,headRefName,statusCheckRollup": exec.ErrNotFound,
 		},
 	}
 	client := NewClient(runner)
@@ -66,7 +68,7 @@ func TestClientPullRequestsGenericNoSuchFileErrorIsCommandError(t *testing.T) {
 	wantErr := errors.New("open .git/config: no such file or directory")
 	runner := &fakeRunner{
 		err: map[string]error{
-			"/repo/grove | gh pr list --json number,url,state,isDraft,headRefName": wantErr,
+			"/repo/grove | gh pr list --state all --limit 100 --json number,url,state,isDraft,headRefName,statusCheckRollup": wantErr,
 		},
 	}
 	client := NewClient(runner)
@@ -90,7 +92,7 @@ func TestClientPullRequestsGenericNoSuchFileErrorIsCommandError(t *testing.T) {
 func TestClientPullRequestsInvalidJSONWrapsContext(t *testing.T) {
 	runner := &fakeRunner{
 		output: map[string]string{
-			"/repo/grove | gh pr list --json number,url,state,isDraft,headRefName": "{",
+			"/repo/grove | gh pr list --state all --limit 100 --json number,url,state,isDraft,headRefName,statusCheckRollup": "{",
 		},
 	}
 	client := NewClient(runner)
@@ -101,6 +103,19 @@ func TestClientPullRequestsInvalidJSONWrapsContext(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "gh pr list json") {
 		t.Fatalf("PullRequests error = %q, want JSON context", err.Error())
+	}
+}
+
+func TestExecRunnerHonorsConfiguredTimeout(t *testing.T) {
+	_, err := (ExecRunner{Timeout: 20 * time.Millisecond}).Run(context.Background(), "", "sh", "-c", "sleep 1")
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Run error = %v, want context deadline exceeded", err)
+	}
+}
+
+func TestDefaultTimeoutIsFiveSeconds(t *testing.T) {
+	if defaultTimeout != 5*time.Second {
+		t.Fatalf("default timeout = %s", defaultTimeout)
 	}
 }
 
