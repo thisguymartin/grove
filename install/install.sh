@@ -3,6 +3,7 @@
 #
 # Usage:
 #   bash install.sh               # Install to default (~/.local/share/grove)
+#   bash install.sh --agent codex # Install with Codex as the default agent
 #   bash install.sh --local       # Symlink local checkout (for development)
 #   bash install.sh --uninstall   # Remove Grove and shell integrations
 #   GROVE_DIR=~/my/path bash install.sh
@@ -15,6 +16,8 @@ set -euo pipefail
 
 GROVE_DIR="${GROVE_DIR:-$HOME/.local/share/grove}"
 REPO_URL="https://github.com/thisguymartin/grove.git"
+GROVE_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/grove"
+GROVE_CONFIG_FILE="$GROVE_CONFIG_DIR/config"
 
 # Colors for output
 BOLD="$(tput bold 2>/dev/null || echo '')"
@@ -99,6 +102,110 @@ cleanup_legacy_installs() {
     done
 }
 
+is_supported_agent() {
+    case "${1:-}" in
+        codex|opencode|claude|gemini|none) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+select_agent_interactively() {
+    local choice
+
+    echo "${BOLD}Choose the AI agent Grove should use by default:${RESET}" >&2
+    echo "  1) Codex (OpenAI)" >&2
+    echo "  2) OpenCode" >&2
+    echo "  3) Claude Code" >&2
+    echo "  4) Gemini CLI" >&2
+    echo "  5) None (worktree tools only)" >&2
+
+    while true; do
+        read -r -p "Selection [1-5]: " choice
+        case "$choice" in
+            1|codex) printf 'codex\n'; return 0 ;;
+            2|opencode) printf 'opencode\n'; return 0 ;;
+            3|claude) printf 'claude\n'; return 0 ;;
+            4|gemini) printf 'gemini\n'; return 0 ;;
+            5|none) printf 'none\n'; return 0 ;;
+            *) warn "Choose 1, 2, 3, 4, or 5." >&2 ;;
+        esac
+    done
+}
+
+resolve_install_agent() {
+    if [[ -n "$SELECTED_AGENT" ]]; then
+        if ! is_supported_agent "$SELECTED_AGENT"; then
+            error "Unsupported agent '$SELECTED_AGENT'. Use codex, opencode, claude, gemini, or none."
+        fi
+        return 0
+    fi
+
+    if [[ -t 0 ]]; then
+        SELECTED_AGENT="$(select_agent_interactively)"
+        return 0
+    fi
+
+    error "Non-interactive installation requires --agent <codex|opencode|claude|gemini|none>."
+}
+
+install_selected_agent() {
+    [[ "$SELECTED_AGENT" != "none" ]] || {
+        info "Skipping AI agent installation."
+        return 0
+    }
+
+    if command -v "$SELECTED_AGENT" >/dev/null 2>&1; then
+        success "$(agent_display_name "$SELECTED_AGENT") is already installed."
+        return 0
+    fi
+
+    info "Installing $(agent_display_name "$SELECTED_AGENT")..."
+    case "$SELECTED_AGENT" in
+        codex)
+            command -v brew >/dev/null 2>&1 || error "Homebrew is required to install Codex."
+            brew install --cask codex
+            ;;
+        opencode)
+            command -v brew >/dev/null 2>&1 || error "Homebrew is required to install OpenCode."
+            brew install anomalyco/tap/opencode
+            ;;
+        claude)
+            command -v brew >/dev/null 2>&1 || error "Homebrew is required to install Claude Code."
+            brew install --cask claude-code
+            ;;
+        gemini)
+            if ! command -v npm >/dev/null 2>&1; then
+                command -v brew >/dev/null 2>&1 || error "Homebrew is required to install Node.js for Gemini CLI."
+                brew install node
+                hash -r
+            fi
+            command -v npm >/dev/null 2>&1 || error "npm is required to install Gemini CLI."
+            npm install -g @google/gemini-cli
+            ;;
+    esac
+}
+
+agent_display_name() {
+    case "$1" in
+        codex) echo "Codex" ;;
+        opencode) echo "OpenCode" ;;
+        claude) echo "Claude Code" ;;
+        gemini) echo "Gemini CLI" ;;
+        none) echo "none" ;;
+    esac
+}
+
+write_agent_config() {
+    mkdir -p "$GROVE_CONFIG_DIR"
+    printf 'default_ai=%s\n' "$SELECTED_AGENT" > "$GROVE_CONFIG_FILE"
+    success "Set Grove's default AI agent to $(agent_display_name "$SELECTED_AGENT")."
+}
+
+remove_agent_config() {
+    rm -f "$GROVE_CONFIG_FILE"
+    rmdir "$GROVE_CONFIG_DIR" 2>/dev/null || true
+}
+
 # ─── Installation ─────────────────────────────────────────────────────────────
 
 do_install() {
@@ -156,7 +263,11 @@ do_install() {
         brew bundle --file="$GROVE_DIR/brewfile" || warn "Brew bundle failed. You may need to install dependencies manually."
     fi
 
-    # 5. Wire up shell aliases
+    # 5. Install only the selected AI agent and save it as Grove's default
+    install_selected_agent
+    write_agent_config
+
+    # 6. Wire up shell aliases
     local shell_name
     shell_name=$(basename "$SHELL")
 
@@ -184,18 +295,6 @@ do_install() {
         success "Added aliases to $rc_file"
     fi
 
-    # 6. Optional 'gwt' alias
-    local gwt_alias="alias gwt='$GROVE_DIR/git-worktree.sh'"
-    if ! grep -qF "$gwt_alias" "$rc_file" 2>/dev/null; then
-        echo ""
-        read -p "   Do you want to add the 'gwt' alias for the worktree toolkit? [y/N] " -n 1 -r
-        echo ""
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            echo "$gwt_alias" >> "$rc_file"
-            success "Added 'gwt' alias to $rc_file"
-        fi
-    fi
-
     echo ""
     echo "${BOLD}${GREEN}✅ Grove installation complete!${RESET}"
     echo ""
@@ -204,6 +303,11 @@ do_install() {
     echo ""
     echo "   Then navigate to any git repository and run:"
     echo "     ${BOLD}grove${RESET}"
+    if [[ "$SELECTED_AGENT" == "none" ]]; then
+        echo ""
+        echo "   Install an AI CLI later and launch it explicitly, for example:"
+        echo "     ${BOLD}grove codex .${RESET}"
+    fi
     echo ""
 }
 
@@ -214,6 +318,8 @@ do_uninstall() {
     rc_file=$(detect_shell_rc)
 
     echo "${BOLD}${YELLOW}🗑  Uninstalling Grove...${RESET}"
+
+    remove_agent_config
     
     # 1. Kill all Grove Zellij sessions
     if command -v zellij &>/dev/null; then
@@ -236,7 +342,7 @@ do_uninstall() {
         cp "$rc_file" "${rc_file}.bak"
         
         # Use a temporary file to filter out Grove lines
-        # We look for the comment, the source line, or the gwt alias
+        # Remove the managed source line and any legacy gwt alias.
         sed -i.tmp '/# Grove — git worktree workspace/d' "$rc_file"
         sed -i.tmp "/source.*grove\/git-worktree-aliases\.sh/d" "$rc_file"
         sed -i.tmp "/source.*grove\/git-worktree-aliases\.fish/d" "$rc_file"
@@ -271,13 +377,26 @@ do_uninstall() {
 # Parse flags
 ACTION="install"
 LOCAL_INSTALL=false
-for arg in "$@"; do
-    case "$arg" in
+SELECTED_AGENT=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
         --uninstall|-u) ACTION="uninstall" ;;
         --local|-l) LOCAL_INSTALL=true ;;
         --help|-h) ACTION="help" ;;
+        --agent)
+            [[ $# -ge 2 ]] || error "--agent requires codex, opencode, claude, gemini, or none."
+            SELECTED_AGENT="$2"
+            shift
+            ;;
+        --agent=*) SELECTED_AGENT="${1#--agent=}" ;;
+        *) error "Unknown option '$1'. Run install.sh --help for usage." ;;
     esac
+    shift
 done
+
+if [[ "$ACTION" == "install" ]]; then
+    resolve_install_agent
+fi
 
 if [[ "$ACTION" == "uninstall" ]]; then
     do_uninstall
@@ -288,12 +407,14 @@ elif [[ "$ACTION" == "help" ]]; then
     echo "  install.sh [options]"
     echo ""
     echo "Options:"
+    echo "      --agent AGENT  Set up codex, opencode, claude, gemini, or none"
     echo "  -l, --local        Symlink local checkout instead of cloning (for development)"
     echo "  -u, --uninstall    Remove Grove and its shell integrations"
     echo "  -h, --help         Show this help message"
     echo ""
     echo "Environment Variables:"
     echo "  GROVE_DIR          Override the installation directory (default: ~/.local/share/grove)"
+    echo "  XDG_CONFIG_HOME    Override the config root (default: ~/.config)"
 else
     do_install
 fi

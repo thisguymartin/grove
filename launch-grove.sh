@@ -5,7 +5,7 @@
 # one tab per git worktree, each with LazyGit + AI Agent + Workbench panes.
 #
 # Usage:
-#   ./launch-grove.sh                         # current dir, opencode
+#   ./launch-grove.sh                         # current dir, saved default agent
 #   ./launch-grove.sh claude                  # current dir, claude
 #   ./launch-grove.sh opencode                # current dir, opencode
 #   ./launch-grove.sh codex                   # current dir, codex
@@ -16,6 +16,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/ai-agent.sh
+source "$SCRIPT_DIR/lib/ai-agent.sh"
 
 usage() {
     cat <<'EOF'
@@ -55,7 +57,7 @@ AI & navigation
   grove agents                   Live dashboard of running AI agents
 
 Back-compat
-  grove .                        Launch with OpenCode in current repo
+  grove .                        Launch with the saved default agent
   grove claude [path]            Launch with Claude
   grove wt <cmd>                 Old worktree sub-dispatch (still works)
   wtab / wta / wtcd / wtls ...   Shell aliases (still work)
@@ -64,7 +66,7 @@ Environment Variables:
   GWT_BASE_BRANCH    Base branch for prune/diff/sync/log (default: origin/HEAD or main)
   GWT_WORKTREE_DIR   Override worktree parent directory
   GROVE_EDITOR       Editor for `grove open` (default: $EDITOR or code)
-  AI_EDITOR          Default AI editor (default: opencode)
+  AI_EDITOR          Override the saved default AI agent
 EOF
 }
 
@@ -74,11 +76,11 @@ if [[ $# -eq 0 ]]; then
 fi
 
 REPO_PATH=""
-AI_EDITOR=""
+EXPLICIT_AI=""
 
 is_ai_editor() {
     case "$1" in
-        claude|gemini|opencode|codex) return 0 ;;
+        claude|gemini|opencode|codex|none) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -119,7 +121,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         *)
             if is_ai_editor "$1"; then
-                AI_EDITOR="$1"
+                EXPLICIT_AI="$1"
             elif [[ -d "$1" ]]; then
                 REPO_PATH="$(cd "$1" && pwd)"
             elif [[ -f "$1" ]]; then
@@ -135,7 +137,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-AI_EDITOR="${AI_EDITOR:-opencode}"
+AI_EDITOR="$(grove_require_ai_choice "$EXPLICIT_AI")"
 
 echo "Launching grove with AI_EDITOR=$AI_EDITOR (per-worktree tabs)"
 

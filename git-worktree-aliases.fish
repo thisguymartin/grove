@@ -394,7 +394,7 @@ end
 # grove — launch the full AI-native workspace (God Mode)
 # Usage: grove [ai-editor] [path]
 #   grove                        # show help
-#   grove .                      # current dir, opencode
+#   grove .                      # current dir, saved default agent
 #   grove claude                 # current dir, claude (explicit override)
 #   grove claude .               # current dir, claude
 #   grove gemini                 # current dir, gemini

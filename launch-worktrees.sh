@@ -16,7 +16,7 @@
 # A final "Overview" tab shows stacked live dashboards across all worktrees.
 #
 # Options:
-#   --ai <editor>    AI editor command (default: opencode, or set AI_EDITOR)
+#   --ai <editor>    AI editor command (default: AI_EDITOR, saved config, or legacy opencode)
 #
 # Tab names come from the branch name (strips "refs/heads/").
 # Detached HEADs use the short commit SHA as the tab name.
@@ -32,6 +32,12 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/ai-agent.sh
+source "$SCRIPT_DIR/lib/ai-agent.sh"
+# shellcheck source=lib/session.sh
+source "$SCRIPT_DIR/lib/session.sh"
+
 # ---------------------------------------------------------------------------
 # Argument parsing
 # ---------------------------------------------------------------------------
@@ -39,7 +45,7 @@ REPO_PATH=""
 LAYOUT_ONLY=false
 WRITE_LAYOUT_PATH=""
 SESSION_NAME=""  # set after REPO_PATH is resolved below
-AI_EDITOR="${AI_EDITOR:-opencode}"
+EXPLICIT_AI=""
 GROVE_ZELLIJ_BAR="${GROVE_ZELLIJ_BAR:-zjstatus}"
 
 # Stock Zellij tab colors — cycles through these (cyan is reserved for Overview)
@@ -60,7 +66,7 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         --ai)
-            AI_EDITOR="${2:?--ai requires an editor name (e.g. claude, opencode, codex)}"
+            EXPLICIT_AI="${2:?--ai requires an editor name (e.g. claude, opencode, codex)}"
             shift 2
             ;;
         --help|-h)
@@ -84,11 +90,17 @@ fi
 # Resolve to the actual top-level so relative paths work
 REPO_PATH=$(git -C "$REPO_PATH" rev-parse --show-toplevel)
 REPO_NAME="$(basename "$REPO_PATH")"
-SESSION_NAME="grove-${REPO_NAME}"
+SESSION_NAME="$(grove_session_name "$REPO_NAME")"
 
 if ! command -v zellij &>/dev/null && ! $LAYOUT_ONLY; then
     echo "Error: zellij is required. Install from https://zellij.dev"
     exit 1
+fi
+
+if $LAYOUT_ONLY; then
+    AI_EDITOR="$(grove_require_ai_choice "$EXPLICIT_AI")"
+else
+    AI_EDITOR="$(grove_require_ai "$EXPLICIT_AI")"
 fi
 
 HAS_LAZYGIT=false
