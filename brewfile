@@ -2,5 +2,4 @@
 brew "zellij"       # Terminal multiplexer (required)
 brew "lazygit"      # Git TUI (optional, falls back to shell)
 brew "fzf"          # Fuzzy picker for 'grove pick' (optional, falls back to numbered menu)
-brew "gemini-cli"   # Gemini CLI (optional, Google AI agent)
 brew "git"          # Git (you probably already have this)

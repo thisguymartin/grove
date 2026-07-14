@@ -21,6 +21,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/ai-agent.sh
+source "$SCRIPT_DIR/lib/ai-agent.sh"
+# shellcheck source=lib/session.sh
+source "$SCRIPT_DIR/lib/session.sh"
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -62,7 +66,7 @@ detect_base_branch() {
 # Name of the Zellij session for this repo (current session if inside one).
 # Usage: session=$(grove_session)
 grove_session() {
-    echo "${ZELLIJ_SESSION_NAME:-grove-${REPO_NAME}}"
+    echo "${ZELLIJ_SESSION_NAME:-$(grove_session_name "$REPO_NAME")}"
 }
 
 # ─── Zellij Integration ───────────────────────────────────────────────────────
@@ -72,7 +76,8 @@ grove_session() {
 generate_single_tab_kdl() {
     local wt_path="$1"
     local branch="$2"
-    local ai_editor="${3:-opencode}"
+    local ai_editor
+    ai_editor="$(grove_require_ai_choice "${3:-}")"
 
     cat <<EOF
 layout {
@@ -118,7 +123,8 @@ maybe_add_zellij_tab() {
     local target_session="${ZELLIJ_SESSION_NAME:-}"
 
     if [[ -z "$target_session" ]]; then
-        local grove_session="grove-${REPO_NAME}"
+        local grove_session
+        grove_session="$(grove_session_name "$REPO_NAME")"
         if zellij list-sessions 2>/dev/null | grep -q "^${grove_session}"; then
             target_session="$grove_session"
         else
@@ -126,7 +132,8 @@ maybe_add_zellij_tab() {
         fi
     fi
 
-    local ai_editor="${AI_EDITOR:-opencode}"
+    local ai_editor
+    ai_editor="$(grove_require_ai "")"
     local layout_file
     layout_file=$(mktemp /tmp/gwt-single-tab-XXXXXXXX.kdl)
 
@@ -393,7 +400,8 @@ cmd_tab() {
     trap 'rm -f "'"$layout_file"'"' EXIT
     echo "$layout" > "$layout_file"
 
-    local session_name="grove-${REPO_NAME}"
+    local session_name
+    session_name="$(grove_session_name "$REPO_NAME")"
 
     echo "Launching Zellij with ${#wt_paths[@]} worktree tab(s)..."
     for i in "${!wt_paths[@]}"; do
@@ -450,8 +458,9 @@ layout {
     }
 HEADER
 
-    # AI editor (default: opencode, override with AI_EDITOR env var)
-    local ai_editor="${AI_EDITOR:-opencode}"
+    # AI editor: explicit command, AI_EDITOR, saved Grove default, then legacy OpenCode.
+    local ai_editor
+    ai_editor="$(grove_require_ai_choice "")"
 
     # Tab color palette — cycles through these for each worktree tab
     # 15 visually distinct colors (cyan is reserved for the Overview tab)
@@ -875,7 +884,8 @@ cmd_go() {
 # Usage: cmd_agent <branch> [ai-editor]
 cmd_agent() {
     local branch="${1:?Usage: git-worktree.sh agent <branch> [ai-editor]}"
-    local ai_editor="${2:-${AI_EDITOR:-opencode}}"
+    local ai_editor
+    ai_editor="$(grove_require_ai "${2:-}")"
     local wt_path
     wt_path=$(require_worktree_path "$branch")
 
@@ -979,7 +989,7 @@ Environment Variables:
   GWT_BASE_BRANCH    Base branch for prune/diff/sync/log (default: origin/HEAD or main)
   GWT_WORKTREE_DIR   Override worktree parent directory
   GROVE_EDITOR       Editor for 'grove open' (default: $EDITOR or code)
-  AI_EDITOR          Default AI editor for 'grove agent' (default: opencode)
+  AI_EDITOR          Override the saved default AI agent for 'grove agent'
 
 Examples:
   grove new feat/checkout                  # branch + worktree

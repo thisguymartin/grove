@@ -40,27 +40,29 @@ Architecture details: [`docs/architecture.md`](docs/architecture.md)
 **bash / zsh:**
 
 ```bash
-bash <(curl -s https://raw.githubusercontent.com/thisguymartin/grove/main/install/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/thisguymartin/grove/main/install/install.sh)
 ```
 
-**fish shell** (process substitution works differently in fish — download and run directly):
+The interactive installer asks which single AI CLI to install and use by default. Choose Codex, OpenCode, Claude Code, Gemini CLI, or none.
+
+**fish shell or other piped/non-interactive installs:**
 
 ```fish
-curl -s https://raw.githubusercontent.com/thisguymartin/grove/main/install/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/thisguymartin/grove/main/install/install.sh | bash -s -- --agent codex
 ```
 
-This will clone the repo, install brew dependencies, and wire up your shell aliases automatically. It detects your shell (zsh/bash/fish) and is safe to run multiple times — re-running always does a clean reinstall (force-deletes the existing install, kills Grove Zellij sessions, and re-clones).
+Replace `codex` with `opencode`, `claude`, `gemini`, or `none`. Piped installs require `--agent` so Grove never silently chooses or installs an AI CLI. The installer clones Grove, installs core Homebrew dependencies, installs only the selected agent when missing, saves it as the default, and wires up shell aliases. Re-running performs the existing clean reinstall.
 
 To install to a custom directory:
 
 **bash / zsh:**
 ```bash
-GROVE_DIR=~/my/path bash <(curl -s https://raw.githubusercontent.com/thisguymartin/grove/main/install/install.sh)
+GROVE_DIR=~/my/path bash <(curl -fsSL https://raw.githubusercontent.com/thisguymartin/grove/main/install/install.sh)
 ```
 
 **fish shell:**
 ```fish
-GROVE_DIR=~/my/path curl -s https://raw.githubusercontent.com/thisguymartin/grove/main/install/install.sh | bash
+GROVE_DIR=~/my/path curl -fsSL https://raw.githubusercontent.com/thisguymartin/grove/main/install/install.sh | bash -s -- --agent opencode
 ```
 
 ### Manual
@@ -74,10 +76,17 @@ git clone https://github.com/thisguymartin/grove.git ~/.local/share/grove
 # 2. Install dependencies
 brew bundle --file=~/.local/share/grove/brewfile
 
-# 3. Add to ~/.zshrc (or ~/.bashrc)
+# 3. Install one AI CLI, or skip this step
+brew install --cask codex
+
+# 4. Save the default agent
+mkdir -p ~/.config/grove
+printf 'default_ai=codex\n' > ~/.config/grove/config
+
+# 5. Add to ~/.zshrc (or ~/.bashrc)
 echo 'source ~/.local/share/grove/git-worktree-aliases.sh' >> ~/.zshrc
 
-# 4. Reload
+# 6. Reload
 source ~/.zshrc
 ```
 
@@ -90,12 +99,29 @@ git clone https://github.com/thisguymartin/grove.git ~/.local/share/grove
 # 2. Install dependencies
 brew bundle --file=~/.local/share/grove/brewfile
 
-# 3. Add to ~/.config/fish/config.fish
+# 3. Install one AI CLI, or skip this step
+brew install anomalyco/tap/opencode
+
+# 4. Save the default agent
+mkdir -p ~/.config/grove
+printf 'default_ai=opencode\n' > ~/.config/grove/config
+
+# 5. Add to ~/.config/fish/config.fish
 echo 'source ~/.local/share/grove/git-worktree-aliases.fish' >> ~/.config/fish/config.fish
 
-# 4. Reload
+# 6. Reload
 source ~/.config/fish/config.fish
 ```
+
+Agent install commands used by Grove:
+
+| Selection | Install command |
+| :--- | :--- |
+| Codex | `brew install --cask codex` |
+| OpenCode | `brew install anomalyco/tap/opencode` |
+| Claude Code | `brew install --cask claude-code` |
+| Gemini CLI | `npm install -g @google/gemini-cli` (the installer adds Node with Homebrew only when `npm` is missing) |
+| None | No AI package is installed; save `default_ai=none` |
 
 ## Usage
 
@@ -139,7 +165,7 @@ Most-used commands:
 
 | Command | Description |
 | :------ | :---------- |
-| `grove .` | Launch workspace with `opencode` as the default AI editor |
+| `grove .` | Launch workspace with the saved default AI agent |
 | `grove claude .` | Launch workspace with Claude |
 | `grove codex .` | Launch workspace with Codex |
 | `wtab <branch>` | Create a new branch + worktree |
@@ -147,14 +173,6 @@ Most-used commands:
 | `wtco <branch>` | Jump into a worktree directory |
 | `wtinfo [branch]` | Show worktree status and upstream info |
 | `wtp [base]` | Prune merged worktrees |
-
-### Git Worktree Toolkit (`gwt`)
-
-A standalone script for worktree lifecycle management. See [`docs/commands.md`](docs/commands.md) for the full command list.
-
-```bash
-alias gwt='~/.local/share/grove/git-worktree.sh'
-```
 
 ## Worktree Lifecycle
 
@@ -188,14 +206,13 @@ wtunlock /path/to/worktree # unlock a worktree
 # Clean up when done
 wtrm /path/to/worktree    # remove a specific worktree
 wtp                        # auto-prune merged worktrees
-
-# Or via gwt (prompts to delete branch too)
-gwt rm feature/auth
 ```
 
 ## Session Management
 
 `grove` auto-kills its previous session before re-launching. Sessions also auto-quit when the terminal closes (`on_force_close "quit"`).
+
+Grove keeps Zellij session names within Zellij's 24-character limit. Long repository names use a shortened readable prefix plus a stable checksum.
 
 ```bash
 zj-kill                    # Kill ALL Zellij sessions (nuclear option)
@@ -215,6 +232,8 @@ Note: `layouts/workspace.kdl.template` is an internal template rendered by Grove
 - [Zellij](https://zellij.dev) — terminal multiplexer
 - [LazyGit](https://github.com/jesseduffield/lazygit) — git TUI (optional, falls back to shell)
 - [Claude Code](https://claude.ai/claude-code), [Gemini CLI](https://github.com/google-gemini/gemini-cli), [OpenCode](https://github.com/opencode-ai/opencode), or Codex CLI (`codex`) — AI agent (optional)
+
+The installer manages one default agent at a time. Additional CLIs can be installed later and launched explicitly, such as `grove claude .`.
 
 Grove vendors [`zjstatus`](https://github.com/dj95/zjstatus) for the custom Zellij bar. No separate install is required.
 

@@ -7,11 +7,11 @@ Full command reference: [`docs/commands.md`](docs/commands.md)
 | Command | Description |
 | :--- | :--- |
 | **`grove`** | **Show help** |
-| **`grove .`** | **Launch workspace** (current dir, opencode) |
-| `grove claude` | Launch with Claude instead of OpenCode |
-| `grove opencode` | Launch with OpenCode instead of Claude |
-| `grove gemini` | Launch with Gemini CLI instead of Claude |
-| `grove codex` | Launch with Codex instead of Claude |
+| **`grove .`** | **Launch workspace** with your saved default agent |
+| `grove claude` | Launch with Claude |
+| `grove opencode` | Launch with OpenCode |
+| `grove gemini` | Launch with Gemini CLI |
+| `grove codex` | Launch with Codex |
 | `grove /path/to/repo` | Launch workspace for a specific repo directory |
 | `grove /path gemini` | Launch for a specific repo with a specific AI editor |
 | `zj-kill` | Kill all Zellij sessions (clean slate) |
@@ -45,7 +45,7 @@ Canonical reference: [`docs/commands.md`](docs/commands.md)
 | Command | Description |
 | :--- | :--- |
 | `grove` | **Show help** |
-| `grove .` | **Launch** workspace — colored tabs per worktree (default: opencode) |
+| `grove .` | **Launch** workspace — colored tabs per worktree using the saved agent |
 | `wtab <branch>` | **Create** new branch + worktree |
 | `wta <branch>` | **Add** worktree for existing branch |
 | `wtls` | **List** all worktrees (`git worktree list`) |
@@ -68,25 +68,6 @@ Tab navigation once inside the session:
 | Switch to next worktree tab | `Alt + Right` |
 | Switch to previous worktree tab | `Alt + Left` |
 | Jump to tab by number | `Alt + <1-9>` |
-
----
-
-## Git Worktree Toolkit (`gwt`)
-
-| Command | Action |
-| :--- | :--- |
-| `gwt new feature/foo` | Create new branch + worktree |
-| `gwt add existing-branch` | Add worktree for existing branch |
-| `gwt rm feature/foo` | Remove a worktree |
-| `gwt ls` | List all worktrees |
-| `gwt prune` | Remove merged/stale worktrees |
-| `gwt tab` | **Launch Zellij with one tab per worktree** |
-| `gwt cd <branch>` | Print worktree path for a branch |
-| `gwt info [branch]` | Show path, HEAD, ahead/behind, dirty status |
-| `gwt diff [branch]` | Diff between branch and base branch |
-| `gwt rename <old> <new>` | Rename a worktree's branch |
-| `gwt lock <path>` | Lock a worktree |
-| `gwt unlock <path>` | Unlock a worktree |
 
 ---
 

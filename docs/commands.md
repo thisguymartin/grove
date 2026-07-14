@@ -12,7 +12,7 @@ grove status [path]            # Live worktree status dashboard
 grove agents                   # Live dashboard of running AI agents
 ```
 
-`ai-editor` is one of `claude | gemini | opencode | codex` (default: `opencode`).
+`ai-editor` is one of `claude | gemini | opencode | codex`. Without an explicit value, Grove uses `AI_EDITOR`, then `default_ai` from `${XDG_CONFIG_HOME:-$HOME/.config}/grove/config`. Manual checkouts without a config retain the legacy `opencode` fallback.
 
 ## Worktrees
 
@@ -91,7 +91,7 @@ grove exec -- npm install
 Nothing old breaks — these all still work:
 
 ```bash
-grove .                        # launch (current dir, opencode)
+grove .                        # launch with the saved default agent
 grove claude [path]            # launch with Claude
 grove wt <cmd>                 # old worktree sub-dispatch
 ```
@@ -121,4 +121,6 @@ Shell aliases from `git-worktree-aliases.sh` (or `.fish`):
 | `GWT_BASE_BRANCH` | Base branch for `prune`/`diff`/`sync`/`log` (default: `origin/HEAD` or `main`) |
 | `GWT_WORKTREE_DIR` | Override the worktree parent directory |
 | `GROVE_EDITOR` | Editor for `grove open` (default: `$EDITOR`, else `code`) |
-| `AI_EDITOR` | Default AI editor (default: `opencode`) |
+| `AI_EDITOR` | Override the saved default AI agent for the current environment |
+
+The config file contains one validated line, such as `default_ai=codex`. A fresh install always writes it. `default_ai=none` keeps worktree-only commands available while agent launches return setup guidance.

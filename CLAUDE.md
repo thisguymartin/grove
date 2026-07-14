@@ -15,7 +15,7 @@ Canonical command reference: `docs/commands.md`
 brew bundle --file=brewfile
 
 # Run Grove (from any git repo with worktrees)
-grove                        # defaults to opencode as AI editor
+grove .                      # use the saved default AI agent
 grove claude                 # use claude
 grove codex                  # use codex
 
@@ -26,7 +26,7 @@ wtco <branch>          # cd into a worktree by branch name (shortcut)
 wtinfo [branch]        # show path, HEAD, ahead/behind, dirty status
 ```
 
-There are no tests or linting configured — this is a shell-script-only project.
+Run shell tests with `bash tests/test-agent-config.sh`, `bash tests/test-agent-runtime.sh`, `bash tests/test-installer.sh`, `bash tests/test-session-name.sh`, and `bash tests/test-launch-layout.sh`.
 
 ## Architecture
 Canonical architecture reference: `docs/architecture.md`
