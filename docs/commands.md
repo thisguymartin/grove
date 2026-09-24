@@ -11,7 +11,7 @@ grove                           # Attach to or launch this repo's Zellij workspa
 grove up [--fresh] [ai-editor] [path]
                                 # Same behavior; --fresh replaces the session
 grove status [path] [--full | --json]
-                                # One-shot status; flags need GROVE_STATUS_BIN
+                                # One-shot status table; flags need GROVE_STATUS_BIN
 grove agents                   # Live dashboard of running AI agents
 ```
 
@@ -23,13 +23,13 @@ grove agents                   # Live dashboard of running AI agents
 | :------ | :---------- |
 | `grove new <branch>` | Create a new branch + worktree |
 | `grove add <branch>` | Add a worktree for an existing branch |
-| `grove ls` | List all worktrees |
-| `grove rm <branch>` | Remove a worktree (prompts to delete branch) |
+| `grove ls` | List all worktrees (the status table without file lines) |
+| `grove rm <branch>` | Remove a worktree (git backend prompts to delete the branch; worktrunk deletes it only when merged) |
 | `grove cd <branch>` | Jump into a worktree (changes shell cwd) |
 | `grove pick` | Pick a worktree interactively (fzf, falls back to a numbered menu), then cd into it |
 | `grove main` | Jump into the main worktree (changes shell cwd) |
 | `grove which <branch>` | Print a worktree's path |
-| `grove root` | Print the main worktree path |
+| `grove root` | Print the main worktree path (never a bare repository) |
 | `grove run <branch> [--] <cmd>` | Run a command inside a worktree's directory |
 | `grove exec [--] <cmd>` | Run a command in EVERY worktree (fan-out) |
 | `grove sync [branch]` | Fetch + rebase the branch onto its base (refuses a dirty tree) |
@@ -48,6 +48,52 @@ grove agents                   # Live dashboard of running AI agents
 > can't `cd` for you — that's why these are special-cased. `grove pick` lists each worktree
 > with the **branch name in color** followed by its **path**; running `grove pick` (the raw
 > subcommand) just prints the chosen path.
+
+`grove status` and `grove ls` print one table, attention first:
+
+```text
+myproject · worktrunk · 3 worktrees · 16:11
+! feat/x  2 changed  ↑1 ↓3  9c1d2e0 wip: checkout flow
+  main *  clean             7bad393 init
+  feat/y  clean      ↑2     41ab77c add tests
+```
+
+`!` marks a dirty, behind, or detached worktree and `*` marks the main worktree. `grove status` also lists up to five changed files under each dirty row.
+
+## Worktree backends
+
+`grove new`, `grove add`, and `grove rm` run through a backend. Every other verb uses git directly.
+
+| Backend | Selected when | new / add / rm |
+| :------ | :------------ | :------------- |
+| `worktrunk` | `wt` is on `PATH` | `wt switch --create`, `wt switch`, `wt remove` |
+| `git` | `wt` is missing | `git worktree add` / `git worktree remove` |
+
+Set `GROVE_WORKTREE_BACKEND=git` or `GROVE_WORKTREE_BACKEND=worktrunk` to choose one explicitly. With worktrunk, `wt` decides where the worktree goes and whether to delete a merged branch. With git, new worktrees go to `../worktrees/<repo>/<branch>` (or `GWT_WORKTREE_DIR`), and to `<project>/<branch>` in a bare layout with `/` replaced by `-`.
+
+### Bare repository layout
+
+Grove supports worktrunk's bare layout, where every branch, including `main`, is a sibling directory:
+
+```text
+myproject/
+├── .git/        # bare repository
+├── main/        # worktree for main
+└── feat-x/      # worktree for feat/x
+```
+
+```bash
+git clone --bare <url> myproject/.git
+cd myproject && wt switch main    # creates myproject/main
+```
+
+Without configuration, worktrunk 0.79 places bare-layout worktrees at `myproject/.git.<branch>`. For sibling directories, add this to `~/.config/worktrunk/config.toml`:
+
+```toml
+worktree-path = "{{ repo_path }}/../{{ branch | sanitize }}"
+```
+
+Grove runs from any directory in the project, including the bare `myproject/` itself. The bare repository never becomes a tab or a status row, and `grove main` goes to `myproject/main`.
 
 ## AI & navigation
 
@@ -114,7 +160,9 @@ Prefer the `grove` verbs: `grove new`, `grove add`, `grove ls`, `grove cd`, `gro
 | Variable | Purpose |
 | :------- | :------ |
 | `GWT_BASE_BRANCH` | Base branch for `prune`/`diff`/`sync`/`log` (default: `origin/HEAD` or `main`) |
-| `GWT_WORKTREE_DIR` | Override the worktree parent directory |
+| `GWT_WORKTREE_DIR` | Override the worktree parent directory (git backend, normal layout) |
+| `GROVE_WORKTREE_BACKEND` | `git` or `worktrunk`; default is `worktrunk` when `wt` is installed |
+| `GROVE_LEGACY_ALIASES` | Set to `1` before sourcing the aliases file to load the archived `wt*` functions |
 | `GROVE_EDITOR` | Editor for `grove open` (default: `$EDITOR`, else `code`) |
 | `AI_EDITOR` | Override the saved default AI agent for the current environment |
 | `GROVE_STATUS_BIN` | Executable experimental Go renderer used by `grove status` and Overview |

@@ -58,6 +58,8 @@ Canonical reference: [`docs/commands.md`](docs/commands.md)
 | `grove lock <path>` / `grove unlock <path>` | **Lock** / **unlock** a worktree |
 | `zj-kill` | **Kill** all Zellij sessions |
 
+With worktrunk installed, `grove new`, `grove add`, and `grove rm` use `wt`; set `GROVE_WORKTREE_BACKEND=git` to force plain git. Bare layouts (`myproject/.git` plus `myproject/main/`) work from any directory in the project.
+
 The old `wt*` aliases are archived: set `GROVE_LEGACY_ALIASES=1` before sourcing the aliases file to load them. The `wt` name now belongs to worktrunk.
 
 Tab navigation once inside the session:

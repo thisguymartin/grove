@@ -23,9 +23,9 @@ Grove is a thin shell layer on top of tools you already use — git worktrees, Z
    - **Middle (~12%):** A Workbench shell — run tests, servers, whatever
    - **Right (~28%):** Your AI agent (`claude`, `gemini`, `opencode`, or `codex`) in that worktree
 
-4. **Custom tab bar** — Grove vendors `zjstatus` and replaces the stock Zellij tab/status bars with one colorful top bar. It shows mode, worktree tabs, the active AI editor, and the Zellij session name. If you prefer the native Zellij bars, launch with `GROVE_ZELLIJ_BAR=stock grove`.
+4. **Custom tab bar** — Grove vendors `zjstatus` and replaces the stock Zellij tab/status bars with one colorful top bar. It shows mode, worktree tabs, the active AI editor, and the worktree backend. If you prefer the native Zellij bars, launch with `GROVE_ZELLIJ_BAR=stock grove`.
 
-5. **Overview tab** — the first tab is one quiet, live status pane. Set `GROVE_STATUS_BIN` to an executable development build for typed git, PR/check, and repo-scoped agent status; otherwise Grove uses the shell worktree summary.
+5. **Overview tab** — the first tab is one quiet, live status table with worktrees that need attention listed first. Set `GROVE_STATUS_BIN` to an executable development build for typed git, PR/check, and repo-scoped agent status; otherwise Grove uses the shell worktree summary.
 
 6. **Session reuse** — running `grove` again attaches without restarting agents or shells. `grove up --fresh` is the explicit replacement path.
 
@@ -177,6 +177,26 @@ Most-used commands:
 | `grove info [branch]` | Show worktree status and upstream info |
 | `grove prune` | Prune merged worktrees |
 
+## Worktree Backends
+
+When [worktrunk](https://worktrunk.dev) (`wt`) is installed, `grove new`, `grove add`, and `grove rm` delegate to it. Otherwise they use plain `git worktree`. Set `GROVE_WORKTREE_BACKEND=git` or `GROVE_WORKTREE_BACKEND=worktrunk` to choose one.
+
+Grove also works with worktrunk's bare layout:
+
+```text
+myproject/
+├── .git/        # bare repository
+├── main/        # worktree for main
+└── feat-x/      # worktree for feat/x
+```
+
+```bash
+git clone --bare <url> myproject/.git
+cd myproject && wt switch main
+```
+
+See [`docs/commands.md`](docs/commands.md#bare-repository-layout) for the worktrunk setting that places worktrees beside `main/`.
+
 ## Session Management
 
 `grove` reuses its repository session so running agents and shells survive terminal detach/reattach. Use `grove up --fresh` to kill and rebuild that session.
@@ -200,6 +220,7 @@ Note: `layouts/workspace.kdl.template` is an internal template rendered by Grove
 
 - [Zellij](https://zellij.dev) — terminal multiplexer
 - [LazyGit](https://github.com/jesseduffield/lazygit) — git TUI (optional, falls back to shell)
+- [worktrunk](https://worktrunk.dev) — worktree backend (optional, auto-detected)
 - [Claude Code](https://claude.ai/claude-code), [Gemini CLI](https://github.com/google-gemini/gemini-cli), [OpenCode](https://github.com/opencode-ai/opencode), or Codex CLI (`codex`) — AI agent (optional)
 
 The installer manages one default agent at a time. Additional CLIs can be installed later and launched explicitly, such as `grove claude .`.
