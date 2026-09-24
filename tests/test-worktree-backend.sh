@@ -104,6 +104,11 @@ printf 'worktree-path = "{{ repo_path }}/../y-{{ branch }}"\n' > "$TMP_DIR/wtcfg
 WORKTRUNK_CONFIG_PATH="$TMP_DIR/wtcfg/config.toml" grove_in "$PROJ" new feat/cfg >/dev/null
 assert_eq "$(<"$WT_LOG")" "-C $PROJ/main switch --create --no-cd feat/cfg" "user config worktree-path wins over Grove's bare default"
 
+printf '[projects."example.com/team/project"]\n  worktree-path = "{{ repo_path }}/../custom-{{ branch | sanitize }}"\n' > "$TMP_DIR/wtcfg/config.toml"
+: > "$WT_LOG"
+WORKTRUNK_CONFIG_PATH="$TMP_DIR/wtcfg/config.toml" grove_in "$PROJ" new feat/scoped >/dev/null
+assert_eq "$(<"$WT_LOG")" "-C $PROJ/main switch --create --no-cd feat/scoped" "indented project path wins over Grove's bare default"
+
 git -C "$NORMAL" branch feat/existing
 : > "$WT_LOG"
 grove_in "$NORMAL" add feat/existing >/dev/null

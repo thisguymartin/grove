@@ -147,7 +147,7 @@ run_wt() {
     cwd="${cwd:-$(grove_repo_root)}"
     local -a opts=()
     if grove_repo_is_bare_layout && [[ -z "${WORKTRUNK_WORKTREE_PATH:-}" ]] \
-        && ! grep -qs '^worktree-path' "${WORKTRUNK_CONFIG_PATH:-${XDG_CONFIG_HOME:-$HOME/.config}/worktrunk/config.toml}"; then
+        && ! grep -Eqs '^[[:space:]]*worktree-path[[:space:]]*=' "${WORKTRUNK_CONFIG_PATH:-${XDG_CONFIG_HOME:-$HOME/.config}/worktrunk/config.toml}"; then
         opts+=(--config-set 'worktree-path="{{ repo_path }}/../{{ branch | sanitize }}"')
     fi
     wt -C "$cwd" ${opts[@]+"${opts[@]}"} "$@"

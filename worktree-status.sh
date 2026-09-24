@@ -54,8 +54,26 @@ truncate() {
     printf '%s' "$text"
 }
 
+truncate_branch() {
+    local branch="$1" width="$2"
+    if (( ${#branch} <= width )); then
+        printf '%s' "$branch"
+    else
+        local suffix_width=8
+        printf '%s…%s' "${branch:0:width-suffix_width-1}" "${branch: -suffix_width}"
+    fi
+}
+
+print_full_branch() {
+    local branch="$1" chunk_width=$((WIDTH - 4))
+    while [[ -n "$branch" ]]; do
+        printf '    %s\n' "${branch:0:chunk_width}"
+        branch="${branch:chunk_width}"
+    done
+}
+
 # Rank orders the table: 0 dirty, 1 behind, 2 detached, 3 main, 4 the rest.
-names=() ranks=() is_main=() states=() syncs=() commits=() paths=()
+names=() branches=() ranks=() is_main=() states=() syncs=() commits=() paths=()
 while IFS=$'\037' read -r path branch head flags; do
     changed=0
     changes="$(git -C "$path" status --porcelain 2>/dev/null || true)"
@@ -81,12 +99,13 @@ while IFS=$'\037' read -r path branch head flags; do
     else rank=4
     fi
 
-    name="$(truncate "${branch:-${head:0:7}}" 24)"
+    name="$(truncate_branch "${branch:-${head:0:7}}" 24)"
     if $main; then name="$name *"; fi
     state="clean"
     if (( changed > 0 )); then state="$changed changed"; fi
 
     names+=("$name")
+    branches+=("$branch")
     ranks+=("$rank")
     is_main+=("$main")
     states+=("$state")
@@ -98,9 +117,21 @@ done < <(grove_worktree_fields "$REPO_PATH")
 count=${#names[@]}
 noun="worktrees"
 if (( count == 1 )); then noun="worktree"; fi
-printf '%s%s%s · %s · %d %s · %s\n' "$BOLD" "$(grove_repo_name "$REPO_PATH")" "$RESET" \
-    "$BACKEND" "$count" "$noun" "$(date '+%H:%M')"
+header_tail=" · $BACKEND · $count $noun · $(date '+%H:%M')"
+printf '%s%s%s%s\n' "$BOLD" "$(truncate "$(grove_repo_name "$REPO_PATH")" "$((WIDTH - ${#header_tail}))")" \
+    "$RESET" "$header_tail"
 if (( count == 0 )); then exit 0; fi
+
+duplicate_names=()
+for i in "${!names[@]}"; do
+    duplicate_names[i]=false
+    for j in "${!names[@]}"; do
+        if (( i != j )) && [[ "${names[i]}" == "${names[j]}" ]]; then
+            duplicate_names[i]=true
+            break
+        fi
+    done
+done
 
 name_w=0 state_w=0 sync_w=0
 for i in "${!names[@]}"; do
@@ -130,12 +161,18 @@ while IFS= read -r i; do
     line+="$DIM$(truncate "${commits[i]}" "$commit_w")$RESET"
     printf '%s\n' "$line"
 
+    if ${duplicate_names[i]}; then
+        print_full_branch "${branches[i]}"
+    fi
+
     if $SHOW_FILES && (( ranks[i] == 0 )); then
         changes="$(git -C "${paths[i]}" status --porcelain 2>/dev/null || true)"
         total="$(printf '%s\n' "$changes" | wc -l | tr -d ' ')"
         while IFS= read -r entry; do
             code="${entry:0:2}"
-            printf '    %s%-2s%s %s\n' "$DIM" "${code// /}" "$RESET" "${entry:3}"
+            file_prefix="    ${code// /} "
+            printf '    %s%s%s %s\n' "$DIM" "${code// /}" "$RESET" \
+                "$(truncate "${entry:3}" "$((WIDTH - ${#file_prefix}))")"
         done < <(printf '%s\n' "$changes" | head -n "$MAX_FILES")
         if (( total > MAX_FILES )); then
             printf '    %s... and %d more%s\n' "$DIM" $((total - MAX_FILES)) "$RESET"
