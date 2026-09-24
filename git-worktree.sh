@@ -220,12 +220,7 @@ cmd_rm() {
 }
 
 cmd_ls() {
-    echo "Backend: $BACKEND"
-    echo "Git Worktrees for ${REPO_NAME}:"
-    echo "─────────────────────────────────────────"
-    grove_worktrees | awk -F'\t' '{
-        printf "  %-50s %s%s\n", $1, ($2 == "" ? "(detached)" : $2), ($4 ~ /locked/ ? " [locked]" : "")
-    }'
+    exec bash "$SCRIPT_DIR/worktree-status.sh" --no-files
 }
 
 cmd_prune() {
@@ -694,7 +689,6 @@ cmd_status() {
     done
 
     local target="${1:-$(pwd)}"
-    echo "Backend: $BACKEND"
     exec bash "$script" "$target"
 }
 
@@ -715,7 +709,7 @@ Usage:
 
 Workspace
   up [ai-editor] [path]         Launch Zellij, one tab per worktree
-  status [path]                 Live worktree status dashboard
+  status [path]                 Worktree status table with changed files
   agents                        Live dashboard of running AI agents
 
 Worktrees

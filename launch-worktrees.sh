@@ -40,6 +40,8 @@ source "$SCRIPT_DIR/lib/ai-agent.sh"
 source "$SCRIPT_DIR/lib/session.sh"
 # shellcheck source=lib/worktrees.sh
 source "$SCRIPT_DIR/lib/worktrees.sh"
+# shellcheck source=lib/backend.sh
+source "$SCRIPT_DIR/lib/backend.sh"
 
 # ---------------------------------------------------------------------------
 # Argument parsing
@@ -96,6 +98,7 @@ fi
 # repository directory) shares one session.
 REPO_PATH="$(grove_repo_root "$REPO_PATH")"
 REPO_NAME="$(grove_repo_name "$REPO_PATH")"
+BACKEND="$(grove_worktree_backend)" || exit 1
 SESSION_NAME="$(grove_session_name "$REPO_NAME")"
 
 if [[ -n "${ZELLIJ_SESSION_NAME:-}" ]]; then
@@ -190,6 +193,7 @@ generate_default_tab_template() {
     local bar_mode="$1"
     local esc_zjstatus_wasm="$2"
     local esc_ai="$3"
+    local backend="$4"
 
     if [[ "$bar_mode" == "zjstatus" ]]; then
         cat <<EOF
@@ -210,7 +214,7 @@ generate_default_tab_template() {
 
                 format_left "{mode} #[fg=\$tab_text,bg=\$bar,bold] Grove "
                 format_center "{tabs}"
-                format_right "#[fg=\$tab_dim,bg=\$bar] ai:$esc_ai #[fg=\$cyan,bg=\$bar]{session} "
+                format_right "#[fg=\$tab_dim,bg=\$bar] ai:$esc_ai · $backend "
                 format_space "#[bg=\$bar] "
                 format_hide_on_overlength "true"
                 format_precedence "clr"
@@ -288,7 +292,7 @@ generate_layout() {
     tab_template_file=$(mktemp /tmp/grove-tab-template-XXXXXXXX)
     trap 'rm -f "$tabs_file" "$tab_template_file"' RETURN
 
-    generate_default_tab_template "$bar_mode" "$esc_zjstatus_wasm" "$(kdl_escape "$AI_EDITOR")" > "$tab_template_file"
+    generate_default_tab_template "$bar_mode" "$esc_zjstatus_wasm" "$(kdl_escape "$AI_EDITOR")" "$BACKEND" > "$tab_template_file"
 
     for i in "${!WT_PATHS[@]}"; do
         local path="${WT_PATHS[$i]}"

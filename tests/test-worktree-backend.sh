@@ -111,7 +111,7 @@ GROVE_WORKTREE_BACKEND=git grove_in "$NORMAL" new feat/y >/dev/null
 [[ ! -s "$WT_LOG" ]] || fail "git backend invoked wt: $(<"$WT_LOG")"
 
 ls_output="$(GROVE_WORKTREE_BACKEND=git grove_in "$NORMAL" ls)"
-assert_contains "$ls_output" "Backend: git" "ls names the backend"
+assert_contains "$(head -n1 <<< "$ls_output")" "demo · git · " "ls names the backend"
 
 if GROVE_WORKTREE_BACKEND=bogus grove_in "$NORMAL" new feat/bad >/dev/null 2>"$TMP_DIR/stderr"; then
     fail "invalid backend should fail"
