@@ -27,6 +27,8 @@ source "$SCRIPT_DIR/lib/ai-agent.sh"
 source "$SCRIPT_DIR/lib/session.sh"
 # shellcheck source=lib/worktrees.sh
 source "$SCRIPT_DIR/lib/worktrees.sh"
+# shellcheck source=lib/backend.sh
+source "$SCRIPT_DIR/lib/backend.sh"
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -37,6 +39,7 @@ grove_repo_common_dir >/dev/null || {
 REPO_ROOT="$(grove_repo_root)"
 REPO_NAME="$(grove_repo_name)"
 BASE_BRANCH="${GWT_BASE_BRANCH:-main}"
+BACKEND="$(grove_worktree_backend)" || exit 1
 
 # Resolve the base branch: $GWT_BASE_BRANCH, else origin/HEAD, else "main".
 # Usage: base=$(detect_base_branch)
@@ -168,62 +171,85 @@ cleanup_zellij_session() {
 
 cmd_add() {
     local branch="${1:?Usage: git-worktree.sh add <branch>}"
-    local target
-    target="$(grove_worktree_target "$branch")"
+    exit_if_worktree_exists "$branch"
 
-    if [[ -d "$target" ]]; then
-        echo "Worktree already exists at $target"
-        exit 0
-    fi
+    case "$BACKEND" in
+        worktrunk)
+            wt -C "$(grove_main_worktree)" switch --no-cd "$branch"
+            ;;
+        git)
+            # Fetch the branch from origin if it exists remotely
+            git fetch origin "$branch" 2>/dev/null || true
+            git worktree add "$(grove_worktree_target "$branch")" "$branch"
+            ;;
+    esac
 
-    # Fetch the branch from origin if it exists remotely
-    git fetch origin "$branch" 2>/dev/null || true
-    git worktree add "$target" "$branch"
-    echo "Worktree added: $target (branch: $branch)"
-    maybe_add_zellij_tab "$target" "$branch"
+    local wt_path
+    wt_path="$(require_worktree_path "$branch")"
+    echo "Worktree added: $wt_path (branch: $branch)"
+    maybe_add_zellij_tab "$wt_path" "$branch"
 }
 
 cmd_new() {
     local branch="${1:?Usage: git-worktree.sh new <branch>}"
-    local target
-    target="$(grove_worktree_target "$branch")"
+    exit_if_worktree_exists "$branch"
 
-    if [[ -d "$target" ]]; then
-        echo "Worktree already exists at $target"
+    case "$BACKEND" in
+        worktrunk)
+            wt -C "$(grove_main_worktree)" switch --create --no-cd "$branch" \
+                ${GWT_BASE_BRANCH:+-b "$GWT_BASE_BRANCH"}
+            ;;
+        git)
+            git worktree add "$(grove_worktree_target "$branch")" -b "$branch"
+            ;;
+    esac
+
+    local wt_path
+    wt_path="$(require_worktree_path "$branch")"
+    echo "Worktree created: $wt_path (new branch: $branch)"
+    maybe_add_zellij_tab "$wt_path" "$branch"
+}
+
+exit_if_worktree_exists() {
+    local existing
+    if existing="$(grove_worktree_path "$1")"; then
+        echo "Worktree already exists at $existing"
         exit 0
     fi
-
-    git worktree add "$target" -b "$branch"
-    echo "Worktree created: $target (new branch: $branch)"
-    maybe_add_zellij_tab "$target" "$branch"
 }
 
 cmd_rm() {
     local branch="${1:?Usage: git-worktree.sh rm <branch>}"
+    local target answer
 
-    # Find the worktree path from git's own registry by branch name
-    local target
-    target="$(grove_worktree_path "$branch")" || target="$(grove_worktree_target "$branch")"
+    case "$BACKEND" in
+        worktrunk)
+            # worktrunk deletes the branch only when it is merged.
+            wt -C "$(grove_main_worktree)" remove "$branch"
+            ;;
+        git)
+            target="$(grove_worktree_path "$branch")" || target="$(grove_worktree_target "$branch")"
+            if [[ ! -d "$target" ]]; then
+                echo "No worktree found for branch '$branch'"
+                exit 1
+            fi
 
-    if [[ ! -d "$target" ]]; then
-        echo "No worktree found for branch '$branch'"
-        exit 1
-    fi
+            git worktree remove --force "$target"
+            echo "Worktree removed: $target"
 
-    git worktree remove --force "$target"
-    echo "Worktree removed: $target"
-
-    # Offer to delete the branch
-    if git show-ref --verify --quiet "refs/heads/$branch"; then
-        read -rp "Delete local branch '$branch'? [y/N] " answer
-        if [[ "$answer" =~ ^[Yy]$ ]]; then
-            git branch -D "$branch"
-            echo "Branch '$branch' deleted."
-        fi
-    fi
+            if git show-ref --verify --quiet "refs/heads/$branch"; then
+                read -rp "Delete local branch '$branch'? [y/N] " answer
+                if [[ "$answer" =~ ^[Yy]$ ]]; then
+                    git branch -D "$branch"
+                    echo "Branch '$branch' deleted."
+                fi
+            fi
+            ;;
+    esac
 }
 
 cmd_ls() {
+    echo "Backend: $BACKEND"
     echo "Git Worktrees for ${REPO_NAME}:"
     echo "─────────────────────────────────────────"
     grove_worktrees | awk -F'\t' '{
@@ -849,6 +875,7 @@ cmd_status() {
     done
 
     local target="${1:-$(pwd)}"
+    echo "Backend: $BACKEND"
     exec bash "$script" "$target"
 }
 
@@ -910,6 +937,8 @@ function (sourced from git-worktree-aliases.sh). Run from there, not directly.
 Environment Variables:
   GWT_BASE_BRANCH    Base branch for prune/diff/sync/log (default: origin/HEAD or main)
   GWT_WORKTREE_DIR   Override worktree parent directory
+  GROVE_WORKTREE_BACKEND
+                     git or worktrunk (default: worktrunk when wt is installed)
   GROVE_EDITOR       Editor for 'grove open' (default: $EDITOR or code)
   AI_EDITOR          Override the saved default AI agent for 'grove agent'
 
