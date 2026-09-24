@@ -99,7 +99,8 @@ assert_not_contains "$short_help" "grove exec" "short help hides advanced comman
 
 full_help="$(bash "$ROOT_DIR/launch-grove.sh" help --all)"
 assert_contains "$full_help" "grove exec" "full help includes advanced commands"
-assert_contains "$full_help" "wtab" "full help includes compatibility commands"
+assert_contains "$full_help" "GROVE_LEGACY_ALIASES=1" "full help explains the archived aliases"
+assert_not_contains "$full_help" "grove wt <cmd>" "full help drops the wt sub-dispatch"
 
 outside_help="$(cd "$TMP_DIR" && bash "$ROOT_DIR/launch-grove.sh")"
 assert_contains "$outside_help" "grove help --all" "bare grove outside repo shows concise help"

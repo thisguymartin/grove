@@ -61,7 +61,6 @@ wait_for_exit "$pid" "status binary hook"
 ) &
 pid=$!
 wait_for_exit "$pid" "fallback status"
-grep -q "Git Worktrees:" "$TMP_DIR/fallback-output" || fail "fallback did not render worktree status: $(<"$TMP_DIR/fallback-output")"
-grep -q "demo" "$TMP_DIR/fallback-output" || fail "fallback did not identify the repository"
+grep -q "^demo · " "$TMP_DIR/fallback-output" || fail "fallback did not render the status header: $(<"$TMP_DIR/fallback-output")"
 
 printf 'status hook tests passed\n'

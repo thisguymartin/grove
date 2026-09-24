@@ -1,179 +1,181 @@
 #!/usr/bin/env bash
-# worktree-status.sh — Live dashboard for git worktree status
+# worktree-status.sh — one compact table of every worktree in a repository.
 #
 # Usage:
-#   ./worktree-status.sh              # Use current directory
-#   ./worktree-status.sh /path/repo   # Explicit repo path
+#   ./worktree-status.sh [--no-files] [path]
 #
-# Designed to be run under `watch -n 2 -c` for live updates.
-# Standalone: watch -n 2 -c ./worktree-status.sh
+# Rows needing attention (dirty, behind upstream, or detached) come first and
+# carry a "!" marker. Color is used only on a terminal without NO_COLOR.
+# Width follows $COLUMNS (default 80).
 
 set -euo pipefail
 
-REPO_PATH="${1:-$(pwd)}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/worktrees.sh
+source "$SCRIPT_DIR/lib/worktrees.sh"
+# shellcheck source=lib/backend.sh
+source "$SCRIPT_DIR/lib/backend.sh"
 
-# Resolve to git toplevel
-REPO_PATH=$(git -C "$REPO_PATH" rev-parse --show-toplevel 2>/dev/null) || {
+SHOW_FILES=true
+REPO_PATH=""
+for arg in "$@"; do
+    case "$arg" in
+        --no-files) SHOW_FILES=false ;;
+        *) REPO_PATH="$arg" ;;
+    esac
+done
+REPO_PATH="${REPO_PATH:-$(pwd)}"
+
+grove_repo_common_dir "$REPO_PATH" >/dev/null || {
     echo "Error: not a git repository: $REPO_PATH"
     exit 1
 }
+BACKEND="$(grove_worktree_backend)" || exit 1
+WIDTH="${COLUMNS:-80}"
+MAX_FILES=5
 
-REPO_NAME=$(basename "$REPO_PATH")
+BOLD='' DIM='' RED='' GREEN='' YELLOW='' CYAN='' RESET=''
+if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
+    BOLD=$'\033[1m' DIM=$'\033[2m' RED=$'\033[31m' GREEN=$'\033[32m'
+    YELLOW=$'\033[33m' CYAN=$'\033[36m' RESET=$'\033[0m'
+fi
 
-# ---------------------------------------------------------------------------
-# Colors (ANSI — works with watch -c)
-# ---------------------------------------------------------------------------
-BOLD='\033[1m'
-GREEN='\033[32m'
-YELLOW='\033[33m'
-RED='\033[31m'
-CYAN='\033[36m'
-DIM='\033[2m'
-RESET='\033[0m'
-
-# ---------------------------------------------------------------------------
-# Header
-# ---------------------------------------------------------------------------
-echo -e "${BOLD}Git Worktrees: ${CYAN}${REPO_NAME}${RESET}"
-echo -e "${DIM}$(date '+%Y-%m-%d %H:%M:%S')${RESET}"
-echo ""
-
-# ---------------------------------------------------------------------------
-# Parse worktrees and print status for each
-# ---------------------------------------------------------------------------
-wt_path=""
-wt_branch=""
-wt_head=""
-
-print_worktree() {
-    local path="$1" branch="$2" head="$3"
-
-    # Derive display name
-    local display_name
-    if [[ -n "$branch" ]]; then
-        display_name="${branch#refs/heads/}"
-    else
-        display_name="${head:0:7} (detached)"
-    fi
-
-    # Get changes
-    local changes change_count
-    changes=$(git -C "$path" status --short 2>/dev/null || echo "")
-    if [[ -n "$changes" ]]; then
-        change_count=$(echo "$changes" | wc -l | tr -d ' ')
-    else
-        change_count=0
-    fi
-
-    # Get ahead/behind remote
-    local ahead_behind=""
-    if [[ -n "$branch" ]]; then
-        local branch_short="${branch#refs/heads/}"
-        local upstream
-        upstream=$(git -C "$path" rev-parse --abbrev-ref "${branch_short}@{upstream}" 2>/dev/null || echo "")
-        if [[ -n "$upstream" ]]; then
-            local ab
-            ab=$(git -C "$path" rev-list --left-right --count "${branch_short}...${upstream}" 2>/dev/null || echo "")
-            if [[ -n "$ab" ]]; then
-                local ahead behind
-                ahead=$(echo "$ab" | awk '{print $1}')
-                behind=$(echo "$ab" | awk '{print $2}')
-                if [[ "$ahead" -gt 0 && "$behind" -gt 0 ]]; then
-                    ahead_behind=" ${YELLOW}↑${ahead}↓${behind}${RESET}"
-                elif [[ "$ahead" -gt 0 ]]; then
-                    ahead_behind=" ${GREEN}↑${ahead}${RESET}"
-                elif [[ "$behind" -gt 0 ]]; then
-                    ahead_behind=" ${RED}↓${behind}${RESET}"
-                fi
-            fi
-        fi
-    fi
-
-    # Get recent commits (what's being worked on)
-    local recent_commits
-    recent_commits=$(git -C "$path" log -3 --format="%h %s" 2>/dev/null || echo "")
-
-    # Status indicator
-    local status_icon
-    if [[ "$change_count" -eq 0 ]]; then
-        status_icon="${GREEN}clean${RESET}"
-    else
-        status_icon="${YELLOW}${change_count} changed${RESET}"
-    fi
-
-    # Print worktree info
-    echo -e "${BOLD}${CYAN}[${display_name}]${RESET}  ${status_icon}${ahead_behind}"
-    echo -e "  ${DIM}Path:${RESET} $path"
-
-    # Recent commits — what's being worked on
-    if [[ -n "$recent_commits" ]]; then
-        echo -e "  ${DIM}Recent commits:${RESET}"
-        local first=true
-        while IFS= read -r commit_line; do
-            local sha="${commit_line:0:7}"
-            local msg="${commit_line:8}"
-            if [[ "$first" == true ]]; then
-                echo -e "    ${GREEN}●${RESET} ${sha} ${msg}"
-                first=false
-            else
-                echo -e "    ${DIM}○ ${sha} ${msg}${RESET}"
-            fi
-        done <<< "$recent_commits"
-    fi
-
-    # Show changed files if any
-    if [[ -n "$changes" ]]; then
-        local staged_count unstaged_count untracked_count
-        staged_count=$(echo "$changes" | grep -cE '^[MADRCU]' 2>/dev/null || echo 0)
-        unstaged_count=$(echo "$changes" | grep -cE '^ [MD]' 2>/dev/null || echo 0)
-        untracked_count=$(echo "$changes" | grep -c '^\?\?' 2>/dev/null || echo 0)
-
-        local parts=()
-        [[ "$staged_count" -gt 0 ]]   && parts+=("${GREEN}${staged_count} staged${RESET}")
-        [[ "$unstaged_count" -gt 0 ]] && parts+=("${YELLOW}${unstaged_count} modified${RESET}")
-        [[ "$untracked_count" -gt 0 ]] && parts+=("${DIM}${untracked_count} untracked${RESET}")
-
-        local summary
-        summary=$(IFS=", "; echo "${parts[*]}")
-        echo -e "  ${DIM}Changes:${RESET} $summary"
-
-        echo "$changes" | head -8 | while IFS= read -r f; do
-            local marker="${f:0:2}"
-            local fname="${f:3}"
-            case "$marker" in
-                "M "|"MM") echo -e "    ${GREEN}M${RESET} $fname" ;;
-                " M")      echo -e "    ${YELLOW}M${RESET} $fname" ;;
-                "A ")      echo -e "    ${GREEN}A${RESET} $fname" ;;
-                "D "|" D") echo -e "    ${RED}D${RESET} $fname" ;;
-                "R "*)     echo -e "    ${CYAN}R${RESET} $fname" ;;
-                "??")      echo -e "    ${DIM}? $fname${RESET}" ;;
-                *)         echo -e "    $f" ;;
-            esac
-        done
-        if [[ "$change_count" -gt 8 ]]; then
-            echo -e "    ${DIM}... and $((change_count - 8)) more${RESET}"
-        fi
-    fi
-
-    echo ""
+# printf pads by bytes; ${#s} counts characters, so ↑ ↓ … stay aligned.
+pad() {
+    local text="$1" width="$2"
+    printf '%s%*s' "$text" $((width - ${#text})) ''
 }
 
-while IFS= read -r line; do
-    case "$line" in
-        worktree\ *)  wt_path="${line#worktree }" ;;
-        branch\ *)    wt_branch="${line#branch }" ;;
-        HEAD\ *)      wt_head="${line#HEAD }" ;;
-        detached)     wt_branch="" ;;
-        "")
-            if [[ -n "$wt_path" ]]; then
-                print_worktree "$wt_path" "$wt_branch" "$wt_head"
-                wt_path="" wt_branch="" wt_head=""
-            fi
-            ;;
-    esac
-done < <(git -C "$REPO_PATH" worktree list --porcelain)
+truncate() {
+    local text="$1" width="$2"
+    if (( ${#text} > width )); then
+        text="${text:0:width-1}…"
+    fi
+    printf '%s' "$text"
+}
 
-# Handle last entry if no trailing blank line
-if [[ -n "$wt_path" ]]; then
-    print_worktree "$wt_path" "$wt_branch" "$wt_head"
-fi
+truncate_branch() {
+    local branch="$1" width="$2"
+    if (( ${#branch} <= width )); then
+        printf '%s' "$branch"
+    else
+        local suffix_width=8
+        printf '%s…%s' "${branch:0:width-suffix_width-1}" "${branch: -suffix_width}"
+    fi
+}
+
+print_full_branch() {
+    local branch="$1" chunk_width=$((WIDTH - 4))
+    while [[ -n "$branch" ]]; do
+        printf '    %s\n' "${branch:0:chunk_width}"
+        branch="${branch:chunk_width}"
+    done
+}
+
+# Rank orders the table: 0 dirty, 1 behind, 2 detached, 3 main, 4 the rest.
+names=() branches=() ranks=() is_main=() states=() syncs=() commits=() paths=()
+while IFS=$'\037' read -r path branch head flags; do
+    changed=0
+    changes="$(git -C "$path" status --porcelain 2>/dev/null || true)"
+    if [[ -n "$changes" ]]; then
+        changed="$(printf '%s\n' "$changes" | wc -l | tr -d ' ')"
+    fi
+
+    ahead=0 behind=0
+    if [[ -n "$branch" ]] && upstream="$(git -C "$path" rev-parse --abbrev-ref "${branch}@{upstream}" 2>/dev/null)"; then
+        read -r ahead behind < <(git -C "$path" rev-list --left-right --count "${branch}...${upstream}" 2>/dev/null || echo "0 0")
+    fi
+    sync=""
+    if (( ahead > 0 )); then sync="↑$ahead"; fi
+    if (( behind > 0 )); then sync="${sync:+$sync }↓$behind"; fi
+
+    main=false
+    if [[ "$flags" == *main* ]]; then main=true; fi
+
+    if (( changed > 0 )); then rank=0
+    elif (( behind > 0 )); then rank=1
+    elif [[ -z "$branch" ]]; then rank=2
+    elif $main; then rank=3
+    else rank=4
+    fi
+
+    name="$(truncate_branch "${branch:-${head:0:7}}" 24)"
+    if $main; then name="$name *"; fi
+    state="clean"
+    if (( changed > 0 )); then state="$changed changed"; fi
+
+    names+=("$name")
+    branches+=("$branch")
+    ranks+=("$rank")
+    is_main+=("$main")
+    states+=("$state")
+    syncs+=("$sync")
+    commits+=("${head:0:7} $(git -C "$path" log -1 --format=%s "$head" 2>/dev/null || true)")
+    paths+=("$path")
+done < <(grove_worktree_fields "$REPO_PATH")
+
+count=${#names[@]}
+noun="worktrees"
+if (( count == 1 )); then noun="worktree"; fi
+header_tail=" · $BACKEND · $count $noun · $(date '+%H:%M')"
+printf '%s%s%s%s\n' "$BOLD" "$(truncate "$(grove_repo_name "$REPO_PATH")" "$((WIDTH - ${#header_tail}))")" \
+    "$RESET" "$header_tail"
+if (( count == 0 )); then exit 0; fi
+
+duplicate_names=()
+for i in "${!names[@]}"; do
+    duplicate_names[i]=false
+    for j in "${!names[@]}"; do
+        if (( i != j )) && [[ "${names[i]}" == "${names[j]}" ]]; then
+            duplicate_names[i]=true
+            break
+        fi
+    done
+done
+
+name_w=0 state_w=0 sync_w=0
+for i in "${!names[@]}"; do
+    if (( ${#names[i]} > name_w )); then name_w=${#names[i]}; fi
+    if (( ${#states[i]} > state_w )); then state_w=${#states[i]}; fi
+    if (( ${#syncs[i]} > sync_w )); then sync_w=${#syncs[i]}; fi
+done
+sync_col=0
+if (( sync_w > 0 )); then sync_col=$((sync_w + 2)); fi
+commit_w=$((WIDTH - 2 - name_w - 2 - state_w - 2 - sync_col))
+if (( commit_w < 12 )); then commit_w=12; fi
+
+order="$(for i in "${!names[@]}"; do printf '%s\t%s\t%s\n' "${ranks[i]}" "${names[i]}" "$i"; done \
+    | sort -t$'\t' -k1,1n -k2,2 | cut -f3)"
+
+while IFS= read -r i; do
+    mark=" "
+    if (( ranks[i] < 3 )); then mark="!"; fi
+    name_color="$BOLD"
+    if [[ "${is_main[i]}" == true ]]; then name_color="$CYAN$BOLD"; fi
+    state_color="$GREEN"
+    if [[ "${states[i]}" != clean ]]; then state_color="$YELLOW"; fi
+
+    line="$RED$mark$RESET $name_color$(pad "${names[i]}" "$name_w")$RESET  "
+    line+="$state_color$(pad "${states[i]}" "$state_w")$RESET  "
+    if (( sync_col > 0 )); then line+="$YELLOW$(pad "${syncs[i]}" "$sync_w")$RESET  "; fi
+    line+="$DIM$(truncate "${commits[i]}" "$commit_w")$RESET"
+    printf '%s\n' "$line"
+
+    if ${duplicate_names[i]}; then
+        print_full_branch "${branches[i]}"
+    fi
+
+    if $SHOW_FILES && (( ranks[i] == 0 )); then
+        changes="$(git -C "${paths[i]}" status --porcelain 2>/dev/null || true)"
+        total="$(printf '%s\n' "$changes" | wc -l | tr -d ' ')"
+        while IFS= read -r entry; do
+            code="${entry:0:2}"
+            file_prefix="    ${code// /} "
+            printf '    %s%s%s %s\n' "$DIM" "${code// /}" "$RESET" \
+                "$(truncate "${entry:3}" "$((WIDTH - ${#file_prefix}))")"
+        done < <(printf '%s\n' "$changes" | head -n "$MAX_FILES")
+        if (( total > MAX_FILES )); then
+            printf '    %s... and %d more%s\n' "$DIM" $((total - MAX_FILES)) "$RESET"
+        fi
+    fi
+done <<< "$order"

@@ -8,6 +8,10 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/worktrees.sh
+source "$SCRIPT_DIR/lib/worktrees.sh"
+
 REPO_PATH="${1:-$(pwd)}"
 REPO_PATH=$(git -C "$REPO_PATH" rev-parse --show-toplevel 2>/dev/null) || {
     echo "Error: not a git repository: $REPO_PATH"
@@ -42,11 +46,9 @@ fi
 
 # Get worktree branches
 branches=()
-while IFS= read -r line; do
-    case "$line" in
-        branch\ *) branches+=("${line#branch refs/heads/}") ;;
-    esac
-done < <(git -C "$REPO_PATH" worktree list --porcelain)
+while IFS= read -r branch; do
+    if [[ -n "$branch" ]]; then branches+=("$branch"); fi
+done < <(grove_worktrees "$REPO_PATH" | cut -f2)
 
 if [[ ${#branches[@]} -eq 0 ]]; then
     echo -e "  ${DIM}No worktree branches found${RESET}"

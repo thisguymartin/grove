@@ -11,8 +11,6 @@
 #   git-worktree.sh rm  <branch>            # Remove a worktree (and optionally its branch)
 #   git-worktree.sh ls                      # List all worktrees
 #   git-worktree.sh prune                   # Remove worktrees whose branches are merged/gone
-#   git-worktree.sh tab                     # Launch Zellij with a tab per worktree
-#   git-worktree.sh tab --layout-only       # Print the generated Zellij layout to stdout
 #
 # Environment:
 #   GWT_BASE_BRANCH  - Base branch for prune comparison (default: main)
@@ -25,36 +23,20 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/ai-agent.sh"
 # shellcheck source=lib/session.sh
 source "$SCRIPT_DIR/lib/session.sh"
+# shellcheck source=lib/worktrees.sh
+source "$SCRIPT_DIR/lib/worktrees.sh"
+# shellcheck source=lib/backend.sh
+source "$SCRIPT_DIR/lib/backend.sh"
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
-CURRENT_WORKTREE_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || {
+grove_repo_common_dir >/dev/null || {
     echo "Error: not inside a git repository."
     exit 1
 }
-REPO_ROOT="$(git -C "$CURRENT_WORKTREE_ROOT" worktree list --porcelain | awk '/^worktree / { print substr($0, 10); exit }')"
-REPO_ROOT="${REPO_ROOT:-$CURRENT_WORKTREE_ROOT}"
-
-REPO_NAME="$(basename "$REPO_ROOT")"
-PARENT_DIR="$(dirname "$REPO_ROOT")"
-WORKTREE_DIR="${GWT_WORKTREE_DIR:-${PARENT_DIR}/worktrees/${REPO_NAME}}"
+REPO_NAME="$(grove_repo_name)"
 BASE_BRANCH="${GWT_BASE_BRANCH:-main}"
-
-ensure_worktree_dir() {
-    if [[ ! -d "$WORKTREE_DIR" ]]; then
-        mkdir -p "$WORKTREE_DIR"
-    fi
-}
-
-# Print the worktree path for a branch (empty if none).
-# Usage: resolve_worktree_path <branch>
-resolve_worktree_path() {
-    local branch="$1"
-    git worktree list --porcelain | awk -v br="refs/heads/$branch" '
-        /^worktree / { wt = substr($0, 10) }
-        /^branch /   { if (substr($0, 8) == br) print wt }
-    '
-}
+BACKEND="$(grove_worktree_backend)" || exit 1
 
 # Resolve the base branch: $GWT_BASE_BRANCH, else origin/HEAD, else "main".
 # Usage: base=$(detect_base_branch)
@@ -156,122 +138,104 @@ maybe_add_zellij_tab() {
     rm -f "$layout_file"
 }
 
-# Reliably kill and delete a Zellij session
-# Usage: cleanup_zellij_session <session_name> <timeout_seconds>
-cleanup_zellij_session() {
-    local session="$1"
-    local timeout="${2:-5}"
-
-    if ! zellij list-sessions 2>/dev/null | grep -q "^${session}"; then
-        return 0
+# Run worktrunk from a worktree (never the bare directory). In a bare layout
+# worktrunk defaults to <project>/.git.<branch>; place worktrees beside main/
+# unless the user already configured worktree-path.
+run_wt() {
+    local cwd
+    cwd="$(grove_main_worktree)" || true
+    cwd="${cwd:-$(grove_repo_root)}"
+    local -a opts=()
+    if grove_repo_is_bare_layout && [[ -z "${WORKTRUNK_WORKTREE_PATH:-}" ]] \
+        && ! grep -Eqs '^[[:space:]]*worktree-path[[:space:]]*=' "${WORKTRUNK_CONFIG_PATH:-${XDG_CONFIG_HOME:-$HOME/.config}/worktrunk/config.toml}"; then
+        opts+=(--config-set 'worktree-path="{{ repo_path }}/../{{ branch | sanitize }}"')
     fi
-
-    echo "Cleaning up existing Zellij session: $session"
-    zellij kill-session "$session" 2>/dev/null || true
-    zellij delete-session "$session" 2>/dev/null || true
-
-    local elapsed=0
-    while zellij list-sessions 2>/dev/null | grep -q "^${session}"; do
-        if (( elapsed >= timeout )); then
-            echo "Warning: session '$session' still present after ${timeout}s, force deleting..."
-            zellij delete-session "$session" --force 2>/dev/null || true
-            break
-        fi
-        sleep 0.5
-        elapsed=$((elapsed + 1))
-    done
+    wt -C "$cwd" ${opts[@]+"${opts[@]}"} "$@"
 }
 
 # ─── Commands ─────────────────────────────────────────────────────────────────
 
 cmd_add() {
     local branch="${1:?Usage: git-worktree.sh add <branch>}"
-    local target="${WORKTREE_DIR}/${branch}"
+    exit_if_worktree_exists "$branch"
 
-    ensure_worktree_dir
+    case "$BACKEND" in
+        worktrunk)
+            run_wt switch --no-cd "$branch"
+            ;;
+        git)
+            # Fetch the branch from origin if it exists remotely
+            git fetch origin "$branch" 2>/dev/null || true
+            git worktree add "$(grove_worktree_target "$branch")" "$branch"
+            ;;
+    esac
 
-    if [[ -d "$target" ]]; then
-        echo "Worktree already exists at $target"
-        exit 0
-    fi
-
-    # Fetch the branch from origin if it exists remotely
-    git fetch origin "$branch" 2>/dev/null || true
-    git worktree add "$target" "$branch"
-    echo "Worktree added: $target (branch: $branch)"
-    maybe_add_zellij_tab "$target" "$branch"
+    local wt_path
+    wt_path="$(require_worktree_path "$branch")"
+    echo "Worktree added: $wt_path (branch: $branch)"
+    maybe_add_zellij_tab "$wt_path" "$branch"
 }
 
 cmd_new() {
     local branch="${1:?Usage: git-worktree.sh new <branch>}"
-    local target="${WORKTREE_DIR}/${branch}"
+    exit_if_worktree_exists "$branch"
 
-    ensure_worktree_dir
+    case "$BACKEND" in
+        worktrunk)
+            run_wt switch --create --no-cd "$branch" \
+                ${GWT_BASE_BRANCH:+-b "$GWT_BASE_BRANCH"}
+            ;;
+        git)
+            git worktree add "$(grove_worktree_target "$branch")" -b "$branch"
+            ;;
+    esac
 
-    if [[ -d "$target" ]]; then
-        echo "Worktree already exists at $target"
+    local wt_path
+    wt_path="$(require_worktree_path "$branch")"
+    echo "Worktree created: $wt_path (new branch: $branch)"
+    maybe_add_zellij_tab "$wt_path" "$branch"
+}
+
+exit_if_worktree_exists() {
+    local existing
+    if existing="$(grove_worktree_path "$1")"; then
+        echo "Worktree already exists at $existing"
         exit 0
     fi
-
-    git worktree add "$target" -b "$branch"
-    echo "Worktree created: $target (new branch: $branch)"
-    maybe_add_zellij_tab "$target" "$branch"
 }
 
 cmd_rm() {
     local branch="${1:?Usage: git-worktree.sh rm <branch>}"
+    local target answer
 
-    # Find the worktree path from git's own registry by branch name
-    local target
-    target=$(git worktree list --porcelain | awk '
-        /^worktree / { path=substr($0, 10) }
-        /^branch refs\/heads\// { b=substr($0, 8); sub(/^refs\/heads\//, "", b); if (b==branch) print path }
-    ' branch="$branch")
+    case "$BACKEND" in
+        worktrunk)
+            # worktrunk deletes the branch only when it is merged.
+            run_wt remove "$branch"
+            ;;
+        git)
+            target="$(grove_worktree_path "$branch")" || target="$(grove_worktree_target "$branch")"
+            if [[ ! -d "$target" ]]; then
+                echo "No worktree found for branch '$branch'"
+                exit 1
+            fi
 
-    # Fallback: check the conventional location
-    if [[ -z "$target" ]]; then
-        target="${WORKTREE_DIR}/${branch}"
-    fi
+            git worktree remove --force "$target"
+            echo "Worktree removed: $target"
 
-    if [[ ! -d "$target" ]]; then
-        echo "No worktree found for branch '$branch'"
-        exit 1
-    fi
-
-    git worktree remove --force "$target"
-    echo "Worktree removed: $target"
-
-    # Offer to delete the branch
-    if git show-ref --verify --quiet "refs/heads/$branch"; then
-        read -rp "Delete local branch '$branch'? [y/N] " answer
-        if [[ "$answer" =~ ^[Yy]$ ]]; then
-            git branch -D "$branch"
-            echo "Branch '$branch' deleted."
-        fi
-    fi
+            if git show-ref --verify --quiet "refs/heads/$branch"; then
+                read -rp "Delete local branch '$branch'? [y/N] " answer
+                if [[ "$answer" =~ ^[Yy]$ ]]; then
+                    git branch -D "$branch"
+                    echo "Branch '$branch' deleted."
+                fi
+            fi
+            ;;
+    esac
 }
 
 cmd_ls() {
-    echo "Git Worktrees for ${REPO_NAME}:"
-    echo "─────────────────────────────────────────"
-    git worktree list --porcelain | awk '
-        /^worktree / { wt = substr($0, 10) }
-        /^branch /   { br = substr($0, 8); sub(/^refs\/heads\//, "", br) }
-        $1 == "HEAD"     { head = $2 }
-        $1 == "detached" { br = "(detached)" }
-        $1 == "locked"   { locked = " [locked]" }
-        /^$/ {
-            if (wt != "") {
-                printf "  %-50s %s%s\n", wt, br, locked
-            }
-            wt = br = head = locked = ""
-        }
-        END {
-            if (wt != "") {
-                printf "  %-50s %s%s\n", wt, br, locked
-            }
-        }
-    '
+    exec bash "$SCRIPT_DIR/worktree-status.sh" --no-files
 }
 
 cmd_prune() {
@@ -285,9 +249,9 @@ cmd_prune() {
 
     local pruned=0
 
-    while IFS=$'\t' read -r wt br; do
-        # Skip the main worktree
-        if [[ "$wt" == "$REPO_ROOT" ]]; then
+    while IFS=$'\037' read -r wt br _ flags; do
+        # Skip the main worktree, locked worktrees, and detached HEADs
+        if [[ -z "$br" || "$flags" == *main* || "$flags" == *locked* ]]; then
             continue
         fi
 
@@ -331,22 +295,7 @@ cmd_prune() {
                 pruned=$((pruned + 1))
             fi
         fi
-    done < <(git worktree list --porcelain | awk '
-        /^worktree / { wt = substr($0, 10) }
-        /^branch /   { br = substr($0, 8); sub(/^refs\/heads\//, "", br) }
-        /^locked/    { locked = 1 }
-        /^$/ {
-            if (wt != "" && locked != 1) {
-                print wt "\t" br
-            }
-            wt = br = ""; locked = 0
-        }
-        END {
-            if (wt != "" && locked != 1) {
-                print wt "\t" br
-            }
-        }
-    ')
+    done < <(grove_worktree_fields)
 
     if [[ "$pruned" -eq 0 ]]; then
         echo "  Nothing to prune."
@@ -355,190 +304,18 @@ cmd_prune() {
     fi
 }
 
-cmd_tab() {
-    local layout_only=false
-    if [[ "${1:-}" == "--layout-only" ]]; then
-        layout_only=true
-    fi
-
-    # Collect worktree information
-    local -a wt_paths=()
-    local -a wt_branches=()
-
-    while IFS=$'\t' read -r wt br; do
-        wt_paths+=("$wt")
-        wt_branches+=("$br")
-    done < <(
-        git worktree list --porcelain | awk '
-            /^worktree / { wt = substr($0, 10) }
-            /^branch /   { br = substr($0, 8); sub(/^refs\/heads\//, "", br) }
-            $1 == "detached" { br = "(detached)" }
-            /^$/ {
-                if (wt != "") print wt "\t" br
-                wt = br = ""
-            }
-            END {
-                if (wt != "") print wt "\t" br
-            }
-        '
-    )
-
-    if [[ ${#wt_paths[@]} -eq 0 ]]; then
-        echo "No worktrees found."
-        exit 1
-    fi
-
-    # Generate a KDL layout with one tab per worktree
-    local layout
-    layout=$(generate_tab_layout "${wt_paths[@]}" -- "${wt_branches[@]}")
-
-    if $layout_only; then
-        echo "$layout"
-        exit 0
-    fi
-
-    local layout_file
-    layout_file=$(mktemp /tmp/gwt-tabs-XXXXXXXX)
-    trap 'rm -f "'"$layout_file"'"' EXIT
-    echo "$layout" > "$layout_file"
-
-    local session_name
-    session_name="$(grove_session_name "$REPO_NAME")"
-
-    echo "Launching Zellij with ${#wt_paths[@]} worktree tab(s)..."
-    for i in "${!wt_paths[@]}"; do
-        echo "  [Tab $((i+1))] ${wt_branches[$i]} -> ${wt_paths[$i]}"
-    done
-    echo ""
-    echo "Session: $session_name"
-    echo "Tip: Use Alt+Left/Right to switch between worktree tabs"
-    echo ""
-
-    ZELLIJ_SESSION_NAME="${ZELLIJ_SESSION_NAME:-}"
-    if [[ -n "$ZELLIJ_SESSION_NAME" ]] || [[ "${ZELLIJ:-}" == "0" ]]; then
-        echo ""
-        echo "Error: already inside Zellij session '${ZELLIJ_SESSION_NAME:-unknown}'."
-        echo "Detach first (Ctrl+o, d), then re-run this command."
-        rm -f "$layout_file"
-        exit 1
-    fi
-
-    cleanup_zellij_session "$session_name" 5
-
-    zellij --new-session-with-layout "$layout_file" --session "$session_name"
-}
-
-generate_tab_layout() {
-    # Parse args: paths... -- branches...
-    local -a paths=()
-    local -a branches=()
-    local parsing_branches=false
-
-    for arg in "$@"; do
-        if [[ "$arg" == "--" ]]; then
-            parsing_branches=true
-            continue
-        fi
-        if $parsing_branches; then
-            branches+=("$arg")
-        else
-            paths+=("$arg")
-        fi
-    done
-
-    # Start layout
-    cat <<'HEADER'
-layout {
-    default_tab_template {
-        pane size=1 borderless=true {
-            plugin location="zellij:tab-bar"
-        }
-        children
-        pane size=1 borderless=true {
-            plugin location="zellij:status-bar"
-        }
-    }
-HEADER
-
-    # AI editor: explicit command, AI_EDITOR, saved Grove default, then legacy OpenCode.
-    local ai_editor
-    ai_editor="$(grove_require_ai_choice "")"
-
-    # Tab color palette — cycles through these for each worktree tab
-    # 15 visually distinct colors (cyan is reserved for the Overview tab)
-    local -a tab_colors=(
-        "green" "blue" "yellow" "magenta" "orange" "red"
-        "#d75fd7" "#00afd7" "#5fd700" "#af87ff"
-        "#d7af5f" "#ff5f87" "#00d7af" "#5f87d7" "#d78700"
-    )
-
-    # One tab per worktree
-    for i in "${!paths[@]}"; do
-        local path="${paths[$i]}"
-        local branch="${branches[$i]}"
-        local color_index=$((i % ${#tab_colors[@]}))
-        local tab_color="${tab_colors[$color_index]}"
-
-        cat <<EOF
-
-    tab name="${branch}" color="${tab_color}" {
-        // TOP: LazyGit + AI Agent side by side
-        pane split_direction="vertical" size="70%" {
-            pane command="lazygit" name="LazyGit" {
-                cwd "${path}"
-            }
-            pane command="${ai_editor}" name="AI Agent" {
-                cwd "${path}"
-                focus true
-            }
-        }
-        // BOTTOM: Workbench shell
-        pane name="Workbench" {
-            cwd "${path}"
-        }
-    }
-EOF
-    done
-
-    # Overview tab: live dashboard of all worktrees
-    local script_dir
-    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-    cat <<FOOTER
-
-    tab name="Overview" color="cyan" {
-        pane split_direction="vertical" {
-            pane command="watch" name="Worktree Status" size="60%" {
-                args "-n" "2" "-c" "${script_dir}/worktree-status.sh" "${REPO_ROOT}"
-            }
-            pane name="worktree-mgmt" size="40%" {
-                cwd "${REPO_ROOT}"
-            }
-        }
-    }
-}
-FOOTER
-}
-
 # ─── New Commands ─────────────────────────────────────────────────────────────
 
 # Print the path of a worktree by branch name.
 # A subprocess can't change the parent shell's cwd — the `grove()` shell
 # function captures this output and runs `cd` itself (see git-worktree-aliases.sh).
 cmd_which() {
-    local branch="${1:?Usage: git-worktree.sh which <branch>}"
-    local wt_path
-    wt_path=$(resolve_worktree_path "$branch")
-    if [[ -z "$wt_path" ]]; then
-        echo "No worktree found for branch '$branch'" >&2
-        exit 1
-    fi
-    echo "$wt_path"
+    require_worktree_path "${1:?Usage: git-worktree.sh which <branch>}"
 }
 
-# Print the path of the main worktree (the original clone).
+# Print the path of the main worktree (never the bare repository).
 cmd_root() {
-    git worktree list --porcelain | awk '/^worktree / { print substr($0, 10); exit }'
+    grove_main_worktree
 }
 
 # Interactive worktree picker. Lists every worktree with the branch name in
@@ -548,19 +325,11 @@ cmd_root() {
 # subprocess can't change the parent shell's cwd. All UI is drawn on the
 # tty/stderr so the captured stdout stays a single clean path.
 cmd_pick() {
-    # branch<TAB>path rows (same porcelain parse as cmd_ls)
+    # branch<TAB>path rows
     local rows
-    rows=$(git worktree list --porcelain | awk '
-        /^worktree / { wt = substr($0, 10) }
-        /^branch /   { br = substr($0, 8); sub(/^refs\/heads\//, "", br) }
-        $1 == "detached" { br = "(detached)" }
-        $1 == "locked"   { locked = " [locked]" }
-        /^$/ {
-            if (wt != "") printf "%s%s\t%s\n", br, locked, wt
-            wt = br = locked = ""
-        }
-        END { if (wt != "") printf "%s%s\t%s\n", br, locked, wt }
-    ')
+    rows=$(grove_worktrees | awk -F'\t' '{
+        printf "%s%s\t%s\n", ($2 == "" ? "(detached)" : $2), ($4 ~ /locked/ ? " [locked]" : ""), $1
+    }')
 
     if [[ -z "$rows" ]]; then
         echo "No worktrees found." >&2
@@ -625,19 +394,9 @@ cmd_info() {
     fi
 
     local wt_path="" head_sha=""
-    while IFS= read -r line; do
-        case "$line" in
-            worktree\ *) wt_path="${line#worktree }" ;;
-            HEAD\ *)     head_sha="${line#HEAD }" ;;
-            branch\ *)
-                if [[ "${line#branch refs/heads/}" == "$branch" ]]; then
-                    break
-                fi
-                wt_path="" ; head_sha=""
-                ;;
-            "") wt_path="" ; head_sha="" ;;
-        esac
-    done < <(git worktree list --porcelain)
+    IFS=$'\t' read -r wt_path head_sha < <(
+        grove_worktrees | awk -F'\t' -v br="$branch" '$2 == br { print $1 "\t" $3; exit }'
+    ) || true
 
     if [[ -z "$wt_path" ]]; then
         echo "No worktree found for branch '$branch'"
@@ -702,8 +461,7 @@ cmd_rename() {
     echo "Branch renamed: $old -> $new"
 
     local wt_path
-    wt_path=$(resolve_worktree_path "$new")
-    if [[ -n "$wt_path" ]]; then
+    if wt_path=$(grove_worktree_path "$new"); then
         echo "Note: worktree path is still: $wt_path"
         echo "  The directory was not renamed."
     fi
@@ -725,13 +483,10 @@ cmd_unlock() {
 # Usage: wt=$(require_worktree_path <branch>)
 require_worktree_path() {
     local branch="${1:?branch required}"
-    local wt_path
-    wt_path=$(resolve_worktree_path "$branch")
-    if [[ -z "$wt_path" ]]; then
+    grove_worktree_path "$branch" || {
         echo "No worktree found for branch '$branch'" >&2
         exit 1
-    fi
-    echo "$wt_path"
+    }
 }
 
 # Drop a leading "--" separator from the argument list, if present.
@@ -775,7 +530,7 @@ cmd_exec() {
         [[ -z "$wt_path" ]] && continue
         echo "── ${wt_path} ──────────────────────────────"
         (cd "$wt_path" && "$@") || echo "  (command failed in $wt_path)"
-    done < <(git worktree list --porcelain | awk '/^worktree / { print substr($0, 10) }')
+    done < <(grove_worktrees | cut -f1)
 }
 
 # Fetch + rebase a branch onto its base branch. Refuses a dirty tree.
@@ -864,9 +619,7 @@ cmd_open() {
 # Usage: cmd_go <branch>
 cmd_go() {
     local branch="${1:?Usage: git-worktree.sh go <branch>}"
-    local wt_path
-    wt_path="$(resolve_worktree_path "$branch")"
-    if [[ -z "$wt_path" ]]; then
+    if ! grove_worktree_path "$branch" >/dev/null; then
         echo "No worktree found for branch '$branch'." >&2
         echo "Run 'grove pick' to choose an available worktree." >&2
         exit 1
@@ -971,7 +724,7 @@ Usage:
 
 Workspace
   up [ai-editor] [path]         Launch Zellij, one tab per worktree
-  status [path]                 Live worktree status dashboard
+  status [path]                 Worktree status table with changed files
   agents                        Live dashboard of running AI agents
 
 Worktrees
@@ -996,7 +749,6 @@ Worktrees
   prune                         Remove worktrees for merged/stale branches
   lock   <path>                 Lock a worktree
   unlock <path>                 Unlock a worktree
-  tab    [--layout-only]        Launch Zellij tabs (or print the layout)
 
 AI & navigation
   go     <branch>               Jump to the worktree's Zellij tab (or attach)
@@ -1012,6 +764,8 @@ function (sourced from git-worktree-aliases.sh). Run from there, not directly.
 Environment Variables:
   GWT_BASE_BRANCH    Base branch for prune/diff/sync/log (default: origin/HEAD or main)
   GWT_WORKTREE_DIR   Override worktree parent directory
+  GROVE_WORKTREE_BACKEND
+                     git or worktrunk (default: worktrunk when wt is installed)
   GROVE_EDITOR       Editor for 'grove open' (default: $EDITOR or code)
   AI_EDITOR          Override the saved default AI agent for 'grove agent'
 
@@ -1050,7 +804,6 @@ case "$COMMAND" in
     go)     cmd_go "$@" ;;
     agent)  cmd_agent "$@" ;;
     prune)  cmd_prune ;;
-    tab)    cmd_tab "$@" ;;
     info)   cmd_info "$@" ;;
     diff)   cmd_diff "$@" ;;
     rename) cmd_rename "$@" ;;
