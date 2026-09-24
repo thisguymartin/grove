@@ -214,7 +214,7 @@ generate_default_tab_template() {
 
                 format_left "{mode} #[fg=\$tab_text,bg=\$bar,bold] Grove "
                 format_center "{tabs}"
-                format_right "#[fg=\$tab_dim,bg=\$bar] ai:$esc_ai · $backend "
+                format_right "#[fg=\$tab_dim,bg=\$bar] ai:$esc_ai · $backend #[fg=\$cyan,bg=\$bar]{session} "
                 format_space "#[bg=\$bar] "
                 format_hide_on_overlength "true"
                 format_precedence "clr"

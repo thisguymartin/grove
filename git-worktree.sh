@@ -138,6 +138,21 @@ maybe_add_zellij_tab() {
     rm -f "$layout_file"
 }
 
+# Run worktrunk from a worktree (never the bare directory). In a bare layout
+# worktrunk defaults to <project>/.git.<branch>; place worktrees beside main/
+# unless the user already configured worktree-path.
+run_wt() {
+    local cwd
+    cwd="$(grove_main_worktree)" || true
+    cwd="${cwd:-$(grove_repo_root)}"
+    local -a opts=()
+    if grove_repo_is_bare_layout && [[ -z "${WORKTRUNK_WORKTREE_PATH:-}" ]] \
+        && ! grep -qs '^worktree-path' "${WORKTRUNK_CONFIG_PATH:-${XDG_CONFIG_HOME:-$HOME/.config}/worktrunk/config.toml}"; then
+        opts+=(--config-set 'worktree-path="{{ repo_path }}/../{{ branch | sanitize }}"')
+    fi
+    wt -C "$cwd" ${opts[@]+"${opts[@]}"} "$@"
+}
+
 # ─── Commands ─────────────────────────────────────────────────────────────────
 
 cmd_add() {
@@ -146,7 +161,7 @@ cmd_add() {
 
     case "$BACKEND" in
         worktrunk)
-            wt -C "$(grove_main_worktree)" switch --no-cd "$branch"
+            run_wt switch --no-cd "$branch"
             ;;
         git)
             # Fetch the branch from origin if it exists remotely
@@ -167,7 +182,7 @@ cmd_new() {
 
     case "$BACKEND" in
         worktrunk)
-            wt -C "$(grove_main_worktree)" switch --create --no-cd "$branch" \
+            run_wt switch --create --no-cd "$branch" \
                 ${GWT_BASE_BRANCH:+-b "$GWT_BASE_BRANCH"}
             ;;
         git)
@@ -196,7 +211,7 @@ cmd_rm() {
     case "$BACKEND" in
         worktrunk)
             # worktrunk deletes the branch only when it is merged.
-            wt -C "$(grove_main_worktree)" remove "$branch"
+            run_wt remove "$branch"
             ;;
         git)
             target="$(grove_worktree_path "$branch")" || target="$(grove_worktree_target "$branch")"

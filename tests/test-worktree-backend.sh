@@ -42,6 +42,7 @@ dir="." verb="" create=false base="" branch=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -C) dir="$2"; shift 2 ;;
+        --config-set) shift 2 ;;
         -b) base="$2"; shift 2 ;;
         --create) create=true; shift ;;
         --no-cd) shift ;;
@@ -91,7 +92,17 @@ assert_contains "$output" "Worktree created: $TMP_DIR/normal/wt-feat-z (new bran
 
 : > "$WT_LOG"
 GWT_BASE_BRANCH=main grove_in "$PROJ" new feat/based >/dev/null
-assert_eq "$(<"$WT_LOG")" "-C $PROJ/main switch --create --no-cd feat/based -b main" "worktrunk new from bare dir with base"
+assert_eq "$(<"$WT_LOG")" "-C $PROJ/main --config-set worktree-path=\"{{ repo_path }}/../{{ branch | sanitize }}\" switch --create --no-cd feat/based -b main" "worktrunk new from bare dir places worktrees beside main"
+
+: > "$WT_LOG"
+WORKTRUNK_WORKTREE_PATH='{{ repo_path }}/../x-{{ branch }}' grove_in "$PROJ" new feat/env >/dev/null
+assert_eq "$(<"$WT_LOG")" "-C $PROJ/main switch --create --no-cd feat/env" "user worktree-path env wins over Grove's bare default"
+
+mkdir -p "$TMP_DIR/wtcfg"
+printf 'worktree-path = "{{ repo_path }}/../y-{{ branch }}"\n' > "$TMP_DIR/wtcfg/config.toml"
+: > "$WT_LOG"
+WORKTRUNK_CONFIG_PATH="$TMP_DIR/wtcfg/config.toml" grove_in "$PROJ" new feat/cfg >/dev/null
+assert_eq "$(<"$WT_LOG")" "-C $PROJ/main switch --create --no-cd feat/cfg" "user config worktree-path wins over Grove's bare default"
 
 git -C "$NORMAL" branch feat/existing
 : > "$WT_LOG"

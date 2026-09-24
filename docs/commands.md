@@ -87,11 +87,7 @@ git clone --bare <url> myproject/.git
 cd myproject && wt switch main    # creates myproject/main
 ```
 
-Without configuration, worktrunk 0.79 places bare-layout worktrees at `myproject/.git.<branch>`. For sibling directories, add this to `~/.config/worktrunk/config.toml`:
-
-```toml
-worktree-path = "{{ repo_path }}/../{{ branch | sanitize }}"
-```
+By default worktrunk would place bare-layout worktrees at `myproject/.git.<branch>`. Grove passes worktrunk the sibling path (`myproject/<branch>` with `/` replaced by `-`) unless you already set `worktree-path` in `~/.config/worktrunk/config.toml` or `WORKTRUNK_WORKTREE_PATH`, in which case your setting wins.
 
 Grove runs from any directory in the project, including the bare `myproject/` itself. The bare repository never becomes a tab or a status row, and `grove main` goes to `myproject/main`.
 

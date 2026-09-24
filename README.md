@@ -195,7 +195,7 @@ git clone --bare <url> myproject/.git
 cd myproject && wt switch main
 ```
 
-See [`docs/commands.md`](docs/commands.md#bare-repository-layout) for the worktrunk setting that places worktrees beside `main/`.
+Grove places new worktrees beside `main/` unless your worktrunk config says otherwise. See [`docs/commands.md`](docs/commands.md#bare-repository-layout).
 
 ## Session Management
 
