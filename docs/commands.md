@@ -2,7 +2,7 @@
 
 Canonical command reference for Grove. Keep this file as the source of truth for CLI examples and worktree helpers.
 
-Grove now uses a single, git-style entry point: **`grove <verb>`** — like `git add` / `git commit`. One mental model, all discoverable via `grove help`. The old `wt*` aliases and `grove wt <cmd>` still work (see [Back-compat](#back-compat)).
+Grove now uses a single, git-style entry point: **`grove <verb>`** — like `git add` / `git commit`. One mental model, all discoverable via `grove help`. The old `wt*` shell aliases are archived and opt-in (see [Legacy aliases](#legacy-aliases)).
 
 ## Workspace
 
@@ -42,7 +42,6 @@ grove agents                   # Live dashboard of running AI agents
 | `grove rename <old> <new>` | Rename a worktree's branch |
 | `grove prune` | Remove worktrees for merged/stale branches |
 | `grove lock <path>` / `grove unlock <path>` | Lock / unlock a worktree |
-| `grove tab [--layout-only]` | Launch Zellij tabs (or print the layout) |
 
 > `grove cd`, `grove pick`, and `grove main` change the **calling shell's** cwd, so they run
 > inside the `grove()` shell function (sourced from `git-worktree-aliases.sh`). A subprocess
@@ -91,31 +90,24 @@ grove exec -- npm install
 
 ## Back-compat
 
-Nothing old breaks — these all still work:
+These launch forms still work:
 
 ```bash
 grove .                        # launch with the saved default agent
 grove claude [path]            # launch with Claude
-grove wt <cmd>                 # old worktree sub-dispatch
+zj-kill                        # kill all Zellij sessions
 ```
 
-Shell aliases from `git-worktree-aliases.sh` (or `.fish`):
+### Legacy aliases
 
-| Command | Description |
-| :------ | :---------- |
-| `wtab <branch>` | Create a new branch + worktree |
-| `wta <branch>` | Add worktree for an existing branch |
-| `wtls` | List all worktrees |
-| `wtrm <path>` | Remove a worktree |
-| `wtp [base]` | Prune merged/squash-merged/rebased worktrees |
-| `wtco <branch>` / `wtcd <branch>` | `cd` into a worktree by branch name |
-| `wtinfo [branch]` | Show path, HEAD, ahead/behind, dirty status |
-| `wtdiff [branch]` | Show diff vs base branch |
-| `wtrn <old> <new>` | Rename a worktree branch |
-| `wtlock <path>` / `wtunlock <path>` | Lock / unlock a worktree |
-| `wtui [path]` | Launch Zellij with one tab per worktree |
-| `wtstatus [path]` | Show live worktree status dashboard |
-| `zj-kill` | Kill all Zellij sessions |
+The `wt` command name now belongs to [worktrunk](https://worktrunk.dev), so Grove's old `wtab`, `wta`, `wtls`, `wtrm`, `wtp`, `wtcd`, `wtco`, `wtinfo`, `wtdiff`, `wtrn`, `wtlock`, `wtunlock`, `wtstatus`, and `wtui` shell functions live in `legacy/wt-aliases.sh` (and `.fish`). They load only when you opt in before sourcing the Grove aliases:
+
+```bash
+export GROVE_LEGACY_ALIASES=1
+source ~/.local/share/grove/git-worktree-aliases.sh
+```
+
+Prefer the `grove` verbs: `grove new`, `grove add`, `grove ls`, `grove cd`, `grove rm`, and `grove prune`. The `grove wt <cmd>` sub-dispatch and `grove tab` were removed.
 
 ## Environment variables
 

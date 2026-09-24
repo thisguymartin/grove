@@ -29,7 +29,7 @@ Grove is a thin shell layer on top of tools you already use — git worktrees, Z
 
 6. **Session reuse** — running `grove` again attaches without restarting agents or shells. `grove up --fresh` is the explicit replacement path.
 
-The workflow: create worktrees with `wtab`/`wta`, run `grove`, and navigate between branches with `Alt+Left/Right`. Clean up finished branches with `wtrm` or `wtp`.
+The workflow: create worktrees with `grove new`/`grove add`, run `grove`, and navigate between branches with `Alt+Left/Right`. Clean up finished branches with `grove rm` or `grove prune`.
 
 Architecture details: [`docs/architecture.md`](docs/architecture.md)
 
@@ -171,45 +171,11 @@ Most-used commands:
 | `grove status [path]` | Show the repository status once |
 | `grove claude .` | Launch workspace with Claude |
 | `grove codex .` | Launch workspace with Codex |
-| `wtab <branch>` | Create a new branch + worktree |
-| `wta <branch>` | Add worktree for an existing branch |
-| `wtco <branch>` | Jump into a worktree directory |
-| `wtinfo [branch]` | Show worktree status and upstream info |
-| `wtp [base]` | Prune merged worktrees |
-
-## Worktree Lifecycle
-
-```bash
-# Create worktrees
-wtab feature/auth          # new branch + worktree
-wta existing-branch        # worktree for existing remote branch
-
-# List what you have
-wtls
-
-# Launch workspace with all worktrees as tabs
-grove
-grove claude .
-
-# Navigate tabs
-# Alt+Left/Right to switch between worktree tabs
-# Alt+Arrow Keys to move between panes
-
-# Inspect worktrees
-wtco feature/auth          # cd into a worktree
-wtcd feature/auth          # same as wtco
-wtinfo feature/auth        # show path, HEAD, ahead/behind, status
-wtdiff feature/auth        # diff vs base branch
-
-# Rename / lock
-wtrn old-name new-name    # rename a worktree's branch
-wtlock /path/to/worktree   # lock a worktree
-wtunlock /path/to/worktree # unlock a worktree
-
-# Clean up when done
-wtrm /path/to/worktree    # remove a specific worktree
-wtp                        # auto-prune merged worktrees
-```
+| `grove new <branch>` | Create a new branch + worktree |
+| `grove add <branch>` | Add worktree for an existing branch |
+| `grove cd <branch>` | Jump into a worktree directory |
+| `grove info [branch]` | Show worktree status and upstream info |
+| `grove prune` | Prune merged worktrees |
 
 ## Session Management
 

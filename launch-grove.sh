@@ -70,7 +70,7 @@ Worktrees
   grove mv <branch> <new-path>   Move a worktree to a new directory
   grove log [branch]             git log of the branch vs base
   grove open <branch>            Open a worktree in your editor ($GROVE_EDITOR)
-  grove info / diff / rename / prune / lock / unlock / tab
+  grove info / diff / rename / prune / lock / unlock
 
 AI & navigation
   grove go <branch>              Jump to the worktree's Zellij tab (or attach)
@@ -80,12 +80,13 @@ AI & navigation
 Back-compat
   grove .                        Launch with the saved default agent
   grove claude [path]            Launch with Claude
-  grove wt <cmd>                 Old worktree sub-dispatch (still works)
-  wtab / wta / wtcd / wtls ...   Shell aliases (still work)
+  GROVE_LEGACY_ALIASES=1         Restore the archived wt* shell aliases
 
 Environment Variables:
   GWT_BASE_BRANCH    Base branch for prune/diff/sync/log (default: origin/HEAD or main)
   GWT_WORKTREE_DIR   Override worktree parent directory
+  GROVE_WORKTREE_BACKEND
+                     git or worktrunk (default: worktrunk when wt is installed)
   GROVE_EDITOR       Editor for `grove open` (default: $EDITOR or code)
   AI_EDITOR          Override the saved default AI agent
 EOF
@@ -95,7 +96,7 @@ print_command_names() {
     printf '%s\n' \
         up status agents \
         new add ls rm cd pick main which root \
-        run exec sync pr mv log open info diff rename prune lock unlock tab \
+        run exec sync pr mv log open info diff rename prune lock unlock \
         go agent help
 }
 
@@ -123,7 +124,7 @@ is_ai_editor() {
 # Worktree / AI verbs that are delegated to git-worktree.sh.
 is_worktree_verb() {
     case "$1" in
-        new|add|ls|list|rm|which|root|pick|run|exec|sync|pr|mv|log|open|go|agent|agents|status|info|diff|rename|prune|tab|lock|unlock|cd) return 0 ;;
+        new|add|ls|list|rm|which|root|pick|run|exec|sync|pr|mv|log|open|go|agent|agents|status|info|diff|rename|prune|lock|unlock|cd) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -134,9 +135,6 @@ is_worktree_verb() {
 case "${1:-}" in
     up)
         shift ;;                       # fall through to launch with remaining args
-    wt|worktree)
-        shift
-        exec "$SCRIPT_DIR/git-worktree.sh" "$@" ;;
     help)
         if [[ "${2:-}" == "--all" ]]; then
             full_usage
@@ -158,10 +156,6 @@ while [[ $# -gt 0 ]]; do
         --fresh)
             FRESH_SESSION=true
             shift
-            ;;
-        wt|worktree)
-            shift
-            exec "$SCRIPT_DIR/git-worktree.sh" "$@"
             ;;
         *)
             if is_ai_editor "$1"; then

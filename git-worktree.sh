@@ -11,8 +11,6 @@
 #   git-worktree.sh rm  <branch>            # Remove a worktree (and optionally its branch)
 #   git-worktree.sh ls                      # List all worktrees
 #   git-worktree.sh prune                   # Remove worktrees whose branches are merged/gone
-#   git-worktree.sh tab                     # Launch Zellij with a tab per worktree
-#   git-worktree.sh tab --layout-only       # Print the generated Zellij layout to stdout
 #
 # Environment:
 #   GWT_BASE_BRANCH  - Base branch for prune comparison (default: main)
@@ -36,7 +34,6 @@ grove_repo_common_dir >/dev/null || {
     echo "Error: not inside a git repository."
     exit 1
 }
-REPO_ROOT="$(grove_repo_root)"
 REPO_NAME="$(grove_repo_name)"
 BASE_BRANCH="${GWT_BASE_BRANCH:-main}"
 BACKEND="$(grove_worktree_backend)" || exit 1
@@ -139,32 +136,6 @@ maybe_add_zellij_tab() {
         }
     fi
     rm -f "$layout_file"
-}
-
-# Reliably kill and delete a Zellij session
-# Usage: cleanup_zellij_session <session_name> <timeout_seconds>
-cleanup_zellij_session() {
-    local session="$1"
-    local timeout="${2:-5}"
-
-    if ! zellij list-sessions 2>/dev/null | grep -q "^${session}"; then
-        return 0
-    fi
-
-    echo "Cleaning up existing Zellij session: $session"
-    zellij kill-session "$session" 2>/dev/null || true
-    zellij delete-session "$session" 2>/dev/null || true
-
-    local elapsed=0
-    while zellij list-sessions 2>/dev/null | grep -q "^${session}"; do
-        if (( elapsed >= timeout )); then
-            echo "Warning: session '$session' still present after ${timeout}s, force deleting..."
-            zellij delete-session "$session" --force 2>/dev/null || true
-            break
-        fi
-        sleep 0.5
-        elapsed=$((elapsed + 1))
-    done
 }
 
 # ─── Commands ─────────────────────────────────────────────────────────────────
@@ -321,158 +292,6 @@ cmd_prune() {
     else
         echo "  Pruned $pruned worktree(s)."
     fi
-}
-
-cmd_tab() {
-    local layout_only=false
-    if [[ "${1:-}" == "--layout-only" ]]; then
-        layout_only=true
-    fi
-
-    # Collect worktree information
-    local -a wt_paths=()
-    local -a wt_branches=()
-
-    while IFS=$'\t' read -r wt br; do
-        wt_paths+=("$wt")
-        wt_branches+=("$br")
-    done < <(grove_worktrees | awk -F'\t' '{ print $1 "\t" ($2 == "" ? "(detached)" : $2) }')
-
-    if [[ ${#wt_paths[@]} -eq 0 ]]; then
-        echo "No worktrees found."
-        exit 1
-    fi
-
-    # Generate a KDL layout with one tab per worktree
-    local layout
-    layout=$(generate_tab_layout "${wt_paths[@]}" -- "${wt_branches[@]}")
-
-    if $layout_only; then
-        echo "$layout"
-        exit 0
-    fi
-
-    local layout_file
-    layout_file=$(mktemp /tmp/gwt-tabs-XXXXXXXX)
-    trap 'rm -f "'"$layout_file"'"' EXIT
-    echo "$layout" > "$layout_file"
-
-    local session_name
-    session_name="$(grove_session_name "$REPO_NAME")"
-
-    echo "Launching Zellij with ${#wt_paths[@]} worktree tab(s)..."
-    for i in "${!wt_paths[@]}"; do
-        echo "  [Tab $((i+1))] ${wt_branches[$i]} -> ${wt_paths[$i]}"
-    done
-    echo ""
-    echo "Session: $session_name"
-    echo "Tip: Use Alt+Left/Right to switch between worktree tabs"
-    echo ""
-
-    ZELLIJ_SESSION_NAME="${ZELLIJ_SESSION_NAME:-}"
-    if [[ -n "$ZELLIJ_SESSION_NAME" ]] || [[ "${ZELLIJ:-}" == "0" ]]; then
-        echo ""
-        echo "Error: already inside Zellij session '${ZELLIJ_SESSION_NAME:-unknown}'."
-        echo "Detach first (Ctrl+o, d), then re-run this command."
-        rm -f "$layout_file"
-        exit 1
-    fi
-
-    cleanup_zellij_session "$session_name" 5
-
-    zellij --new-session-with-layout "$layout_file" --session "$session_name"
-}
-
-generate_tab_layout() {
-    # Parse args: paths... -- branches...
-    local -a paths=()
-    local -a branches=()
-    local parsing_branches=false
-
-    for arg in "$@"; do
-        if [[ "$arg" == "--" ]]; then
-            parsing_branches=true
-            continue
-        fi
-        if $parsing_branches; then
-            branches+=("$arg")
-        else
-            paths+=("$arg")
-        fi
-    done
-
-    # Start layout
-    cat <<'HEADER'
-layout {
-    default_tab_template {
-        pane size=1 borderless=true {
-            plugin location="zellij:tab-bar"
-        }
-        children
-        pane size=1 borderless=true {
-            plugin location="zellij:status-bar"
-        }
-    }
-HEADER
-
-    # AI editor: explicit command, AI_EDITOR, saved Grove default, then legacy OpenCode.
-    local ai_editor
-    ai_editor="$(grove_require_ai_choice "")"
-
-    # Tab color palette — cycles through these for each worktree tab
-    # 15 visually distinct colors (cyan is reserved for the Overview tab)
-    local -a tab_colors=(
-        "green" "blue" "yellow" "magenta" "orange" "red"
-        "#d75fd7" "#00afd7" "#5fd700" "#af87ff"
-        "#d7af5f" "#ff5f87" "#00d7af" "#5f87d7" "#d78700"
-    )
-
-    # One tab per worktree
-    for i in "${!paths[@]}"; do
-        local path="${paths[$i]}"
-        local branch="${branches[$i]}"
-        local color_index=$((i % ${#tab_colors[@]}))
-        local tab_color="${tab_colors[$color_index]}"
-
-        cat <<EOF
-
-    tab name="${branch}" color="${tab_color}" {
-        // TOP: LazyGit + AI Agent side by side
-        pane split_direction="vertical" size="70%" {
-            pane command="lazygit" name="LazyGit" {
-                cwd "${path}"
-            }
-            pane command="${ai_editor}" name="AI Agent" {
-                cwd "${path}"
-                focus true
-            }
-        }
-        // BOTTOM: Workbench shell
-        pane name="Workbench" {
-            cwd "${path}"
-        }
-    }
-EOF
-    done
-
-    # Overview tab: live dashboard of all worktrees
-    local script_dir
-    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-    cat <<FOOTER
-
-    tab name="Overview" color="cyan" {
-        pane split_direction="vertical" {
-            pane command="watch" name="Worktree Status" size="60%" {
-                args "-n" "2" "-c" "${script_dir}/worktree-status.sh" "${REPO_ROOT}"
-            }
-            pane name="worktree-mgmt" size="40%" {
-                cwd "${REPO_ROOT}"
-            }
-        }
-    }
-}
-FOOTER
 }
 
 # ─── New Commands ─────────────────────────────────────────────────────────────
@@ -921,7 +740,6 @@ Worktrees
   prune                         Remove worktrees for merged/stale branches
   lock   <path>                 Lock a worktree
   unlock <path>                 Unlock a worktree
-  tab    [--layout-only]        Launch Zellij tabs (or print the layout)
 
 AI & navigation
   go     <branch>               Jump to the worktree's Zellij tab (or attach)
@@ -977,7 +795,6 @@ case "$COMMAND" in
     go)     cmd_go "$@" ;;
     agent)  cmd_agent "$@" ;;
     prune)  cmd_prune ;;
-    tab)    cmd_tab "$@" ;;
     info)   cmd_info "$@" ;;
     diff)   cmd_diff "$@" ;;
     rename) cmd_rename "$@" ;;

@@ -46,20 +46,19 @@ Canonical reference: [`docs/commands.md`](docs/commands.md)
 | :--- | :--- |
 | `grove` | **Show help** |
 | `grove .` | **Launch** workspace — colored tabs per worktree using the saved agent |
-| `wtab <branch>` | **Create** new branch + worktree |
-| `wta <branch>` | **Add** worktree for existing branch |
-| `wtls` | **List** all worktrees (`git worktree list`) |
-| `wtrm <path>` | **Remove** a worktree (force) |
-| `wtp [main]` | **Prune** merged / squash-merged / rebased worktrees |
-| `wtcd <branch>` | **cd** into a worktree by branch name |
-| `wtco <branch>` | **cd** into a worktree by branch name (shortcut alias) |
-| `wtinfo [branch]` | **Info** — path, HEAD, ahead/behind, dirty status |
-| `wtdiff [branch]` | **Diff** between worktree branch and base branch |
-| `wtrn <old> <new>` | **Rename** a worktree's branch |
-| `wtlock <path>` | **Lock** a worktree |
-| `wtunlock <path>` | **Unlock** a worktree |
-| `wtui` | **Open** Zellij with one tab per worktree |
+| `grove new <branch>` | **Create** new branch + worktree |
+| `grove add <branch>` | **Add** worktree for existing branch |
+| `grove ls` | **List** all worktrees |
+| `grove rm <branch>` | **Remove** a worktree |
+| `grove prune` | **Prune** merged / squash-merged / rebased worktrees |
+| `grove cd <branch>` | **cd** into a worktree by branch name |
+| `grove info [branch]` | **Info** — path, HEAD, ahead/behind, dirty status |
+| `grove diff [branch]` | **Diff** between worktree branch and base branch |
+| `grove rename <old> <new>` | **Rename** a worktree's branch |
+| `grove lock <path>` / `grove unlock <path>` | **Lock** / **unlock** a worktree |
 | `zj-kill` | **Kill** all Zellij sessions |
+
+The old `wt*` aliases are archived: set `GROVE_LEGACY_ALIASES=1` before sourcing the aliases file to load them. The `wt` name now belongs to worktrunk.
 
 Tab navigation once inside the session:
 

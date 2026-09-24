@@ -17,7 +17,7 @@ assert_contains() {
     [[ "$haystack" == *"$needle"* ]] || fail "$label: expected '$needle'"
 }
 
-expected_commands="add agent agents cd diff exec go help info lock log ls main mv new open pick pr prune rename rm root run status sync tab unlock up which"
+expected_commands="add agent agents cd diff exec go help info lock log ls main mv new open pick pr prune rename rm root run status sync unlock up which"
 actual_commands="$(bash "$ROOT_DIR/launch-grove.sh" __commands | sort | tr '\n' ' ' | sed 's/ $//')"
 [[ "$actual_commands" == "$expected_commands" ]] || fail "canonical commands: expected '$expected_commands', got '$actual_commands'"
 
