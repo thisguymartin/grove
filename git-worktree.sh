@@ -25,36 +25,18 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/ai-agent.sh"
 # shellcheck source=lib/session.sh
 source "$SCRIPT_DIR/lib/session.sh"
+# shellcheck source=lib/worktrees.sh
+source "$SCRIPT_DIR/lib/worktrees.sh"
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
-CURRENT_WORKTREE_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || {
+grove_repo_common_dir >/dev/null || {
     echo "Error: not inside a git repository."
     exit 1
 }
-REPO_ROOT="$(git -C "$CURRENT_WORKTREE_ROOT" worktree list --porcelain | awk '/^worktree / { print substr($0, 10); exit }')"
-REPO_ROOT="${REPO_ROOT:-$CURRENT_WORKTREE_ROOT}"
-
-REPO_NAME="$(basename "$REPO_ROOT")"
-PARENT_DIR="$(dirname "$REPO_ROOT")"
-WORKTREE_DIR="${GWT_WORKTREE_DIR:-${PARENT_DIR}/worktrees/${REPO_NAME}}"
+REPO_ROOT="$(grove_repo_root)"
+REPO_NAME="$(grove_repo_name)"
 BASE_BRANCH="${GWT_BASE_BRANCH:-main}"
-
-ensure_worktree_dir() {
-    if [[ ! -d "$WORKTREE_DIR" ]]; then
-        mkdir -p "$WORKTREE_DIR"
-    fi
-}
-
-# Print the worktree path for a branch (empty if none).
-# Usage: resolve_worktree_path <branch>
-resolve_worktree_path() {
-    local branch="$1"
-    git worktree list --porcelain | awk -v br="refs/heads/$branch" '
-        /^worktree / { wt = substr($0, 10) }
-        /^branch /   { if (substr($0, 8) == br) print wt }
-    '
-}
 
 # Resolve the base branch: $GWT_BASE_BRANCH, else origin/HEAD, else "main".
 # Usage: base=$(detect_base_branch)
@@ -186,9 +168,8 @@ cleanup_zellij_session() {
 
 cmd_add() {
     local branch="${1:?Usage: git-worktree.sh add <branch>}"
-    local target="${WORKTREE_DIR}/${branch}"
-
-    ensure_worktree_dir
+    local target
+    target="$(grove_worktree_target "$branch")"
 
     if [[ -d "$target" ]]; then
         echo "Worktree already exists at $target"
@@ -204,9 +185,8 @@ cmd_add() {
 
 cmd_new() {
     local branch="${1:?Usage: git-worktree.sh new <branch>}"
-    local target="${WORKTREE_DIR}/${branch}"
-
-    ensure_worktree_dir
+    local target
+    target="$(grove_worktree_target "$branch")"
 
     if [[ -d "$target" ]]; then
         echo "Worktree already exists at $target"
@@ -223,15 +203,7 @@ cmd_rm() {
 
     # Find the worktree path from git's own registry by branch name
     local target
-    target=$(git worktree list --porcelain | awk '
-        /^worktree / { path=substr($0, 10) }
-        /^branch refs\/heads\// { b=substr($0, 8); sub(/^refs\/heads\//, "", b); if (b==branch) print path }
-    ' branch="$branch")
-
-    # Fallback: check the conventional location
-    if [[ -z "$target" ]]; then
-        target="${WORKTREE_DIR}/${branch}"
-    fi
+    target="$(grove_worktree_path "$branch")" || target="$(grove_worktree_target "$branch")"
 
     if [[ ! -d "$target" ]]; then
         echo "No worktree found for branch '$branch'"
@@ -254,24 +226,9 @@ cmd_rm() {
 cmd_ls() {
     echo "Git Worktrees for ${REPO_NAME}:"
     echo "─────────────────────────────────────────"
-    git worktree list --porcelain | awk '
-        /^worktree / { wt = substr($0, 10) }
-        /^branch /   { br = substr($0, 8); sub(/^refs\/heads\//, "", br) }
-        $1 == "HEAD"     { head = $2 }
-        $1 == "detached" { br = "(detached)" }
-        $1 == "locked"   { locked = " [locked]" }
-        /^$/ {
-            if (wt != "") {
-                printf "  %-50s %s%s\n", wt, br, locked
-            }
-            wt = br = head = locked = ""
-        }
-        END {
-            if (wt != "") {
-                printf "  %-50s %s%s\n", wt, br, locked
-            }
-        }
-    '
+    grove_worktrees | awk -F'\t' '{
+        printf "  %-50s %s%s\n", $1, ($2 == "" ? "(detached)" : $2), ($4 ~ /locked/ ? " [locked]" : "")
+    }'
 }
 
 cmd_prune() {
@@ -285,9 +242,9 @@ cmd_prune() {
 
     local pruned=0
 
-    while IFS=$'\t' read -r wt br; do
-        # Skip the main worktree
-        if [[ "$wt" == "$REPO_ROOT" ]]; then
+    while IFS=$'\037' read -r wt br _ flags; do
+        # Skip the main worktree, locked worktrees, and detached HEADs
+        if [[ -z "$br" || "$flags" == *main* || "$flags" == *locked* ]]; then
             continue
         fi
 
@@ -331,22 +288,7 @@ cmd_prune() {
                 pruned=$((pruned + 1))
             fi
         fi
-    done < <(git worktree list --porcelain | awk '
-        /^worktree / { wt = substr($0, 10) }
-        /^branch /   { br = substr($0, 8); sub(/^refs\/heads\//, "", br) }
-        /^locked/    { locked = 1 }
-        /^$/ {
-            if (wt != "" && locked != 1) {
-                print wt "\t" br
-            }
-            wt = br = ""; locked = 0
-        }
-        END {
-            if (wt != "" && locked != 1) {
-                print wt "\t" br
-            }
-        }
-    ')
+    done < <(grove_worktree_fields)
 
     if [[ "$pruned" -eq 0 ]]; then
         echo "  Nothing to prune."
@@ -368,20 +310,7 @@ cmd_tab() {
     while IFS=$'\t' read -r wt br; do
         wt_paths+=("$wt")
         wt_branches+=("$br")
-    done < <(
-        git worktree list --porcelain | awk '
-            /^worktree / { wt = substr($0, 10) }
-            /^branch /   { br = substr($0, 8); sub(/^refs\/heads\//, "", br) }
-            $1 == "detached" { br = "(detached)" }
-            /^$/ {
-                if (wt != "") print wt "\t" br
-                wt = br = ""
-            }
-            END {
-                if (wt != "") print wt "\t" br
-            }
-        '
-    )
+    done < <(grove_worktrees | awk -F'\t' '{ print $1 "\t" ($2 == "" ? "(detached)" : $2) }')
 
     if [[ ${#wt_paths[@]} -eq 0 ]]; then
         echo "No worktrees found."
@@ -526,19 +455,12 @@ FOOTER
 # A subprocess can't change the parent shell's cwd — the `grove()` shell
 # function captures this output and runs `cd` itself (see git-worktree-aliases.sh).
 cmd_which() {
-    local branch="${1:?Usage: git-worktree.sh which <branch>}"
-    local wt_path
-    wt_path=$(resolve_worktree_path "$branch")
-    if [[ -z "$wt_path" ]]; then
-        echo "No worktree found for branch '$branch'" >&2
-        exit 1
-    fi
-    echo "$wt_path"
+    require_worktree_path "${1:?Usage: git-worktree.sh which <branch>}"
 }
 
-# Print the path of the main worktree (the original clone).
+# Print the path of the main worktree (never the bare repository).
 cmd_root() {
-    git worktree list --porcelain | awk '/^worktree / { print substr($0, 10); exit }'
+    grove_main_worktree
 }
 
 # Interactive worktree picker. Lists every worktree with the branch name in
@@ -548,19 +470,11 @@ cmd_root() {
 # subprocess can't change the parent shell's cwd. All UI is drawn on the
 # tty/stderr so the captured stdout stays a single clean path.
 cmd_pick() {
-    # branch<TAB>path rows (same porcelain parse as cmd_ls)
+    # branch<TAB>path rows
     local rows
-    rows=$(git worktree list --porcelain | awk '
-        /^worktree / { wt = substr($0, 10) }
-        /^branch /   { br = substr($0, 8); sub(/^refs\/heads\//, "", br) }
-        $1 == "detached" { br = "(detached)" }
-        $1 == "locked"   { locked = " [locked]" }
-        /^$/ {
-            if (wt != "") printf "%s%s\t%s\n", br, locked, wt
-            wt = br = locked = ""
-        }
-        END { if (wt != "") printf "%s%s\t%s\n", br, locked, wt }
-    ')
+    rows=$(grove_worktrees | awk -F'\t' '{
+        printf "%s%s\t%s\n", ($2 == "" ? "(detached)" : $2), ($4 ~ /locked/ ? " [locked]" : ""), $1
+    }')
 
     if [[ -z "$rows" ]]; then
         echo "No worktrees found." >&2
@@ -625,19 +539,9 @@ cmd_info() {
     fi
 
     local wt_path="" head_sha=""
-    while IFS= read -r line; do
-        case "$line" in
-            worktree\ *) wt_path="${line#worktree }" ;;
-            HEAD\ *)     head_sha="${line#HEAD }" ;;
-            branch\ *)
-                if [[ "${line#branch refs/heads/}" == "$branch" ]]; then
-                    break
-                fi
-                wt_path="" ; head_sha=""
-                ;;
-            "") wt_path="" ; head_sha="" ;;
-        esac
-    done < <(git worktree list --porcelain)
+    IFS=$'\t' read -r wt_path head_sha < <(
+        grove_worktrees | awk -F'\t' -v br="$branch" '$2 == br { print $1 "\t" $3; exit }'
+    ) || true
 
     if [[ -z "$wt_path" ]]; then
         echo "No worktree found for branch '$branch'"
@@ -702,8 +606,7 @@ cmd_rename() {
     echo "Branch renamed: $old -> $new"
 
     local wt_path
-    wt_path=$(resolve_worktree_path "$new")
-    if [[ -n "$wt_path" ]]; then
+    if wt_path=$(grove_worktree_path "$new"); then
         echo "Note: worktree path is still: $wt_path"
         echo "  The directory was not renamed."
     fi
@@ -725,13 +628,10 @@ cmd_unlock() {
 # Usage: wt=$(require_worktree_path <branch>)
 require_worktree_path() {
     local branch="${1:?branch required}"
-    local wt_path
-    wt_path=$(resolve_worktree_path "$branch")
-    if [[ -z "$wt_path" ]]; then
+    grove_worktree_path "$branch" || {
         echo "No worktree found for branch '$branch'" >&2
         exit 1
-    fi
-    echo "$wt_path"
+    }
 }
 
 # Drop a leading "--" separator from the argument list, if present.
@@ -775,7 +675,7 @@ cmd_exec() {
         [[ -z "$wt_path" ]] && continue
         echo "── ${wt_path} ──────────────────────────────"
         (cd "$wt_path" && "$@") || echo "  (command failed in $wt_path)"
-    done < <(git worktree list --porcelain | awk '/^worktree / { print substr($0, 10) }')
+    done < <(grove_worktrees | cut -f1)
 }
 
 # Fetch + rebase a branch onto its base branch. Refuses a dirty tree.
@@ -864,9 +764,7 @@ cmd_open() {
 # Usage: cmd_go <branch>
 cmd_go() {
     local branch="${1:?Usage: git-worktree.sh go <branch>}"
-    local wt_path
-    wt_path="$(resolve_worktree_path "$branch")"
-    if [[ -z "$wt_path" ]]; then
+    if ! grove_worktree_path "$branch" >/dev/null; then
         echo "No worktree found for branch '$branch'." >&2
         echo "Run 'grove pick' to choose an available worktree." >&2
         exit 1

@@ -10,15 +10,17 @@
 
 set -euo pipefail
 
-REPO_PATH="${1:-$(pwd)}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/worktrees.sh
+source "$SCRIPT_DIR/lib/worktrees.sh"
 
-# Resolve to git toplevel
-REPO_PATH=$(git -C "$REPO_PATH" rev-parse --show-toplevel 2>/dev/null) || {
+REPO_PATH="${1:-$(pwd)}"
+grove_repo_common_dir "$REPO_PATH" >/dev/null || {
     echo "Error: not a git repository: $REPO_PATH"
     exit 1
 }
 
-REPO_NAME=$(basename "$REPO_PATH")
+REPO_NAME="$(grove_repo_name "$REPO_PATH")"
 
 # ---------------------------------------------------------------------------
 # Colors (ANSI — works with watch -c)
@@ -41,17 +43,13 @@ echo ""
 # ---------------------------------------------------------------------------
 # Parse worktrees and print status for each
 # ---------------------------------------------------------------------------
-wt_path=""
-wt_branch=""
-wt_head=""
-
 print_worktree() {
     local path="$1" branch="$2" head="$3"
 
     # Derive display name
     local display_name
     if [[ -n "$branch" ]]; then
-        display_name="${branch#refs/heads/}"
+        display_name="$branch"
     else
         display_name="${head:0:7} (detached)"
     fi
@@ -68,7 +66,7 @@ print_worktree() {
     # Get ahead/behind remote
     local ahead_behind=""
     if [[ -n "$branch" ]]; then
-        local branch_short="${branch#refs/heads/}"
+        local branch_short="$branch"
         local upstream
         upstream=$(git -C "$path" rev-parse --abbrev-ref "${branch_short}@{upstream}" 2>/dev/null || echo "")
         if [[ -n "$upstream" ]]; then
@@ -158,22 +156,6 @@ print_worktree() {
     echo ""
 }
 
-while IFS= read -r line; do
-    case "$line" in
-        worktree\ *)  wt_path="${line#worktree }" ;;
-        branch\ *)    wt_branch="${line#branch }" ;;
-        HEAD\ *)      wt_head="${line#HEAD }" ;;
-        detached)     wt_branch="" ;;
-        "")
-            if [[ -n "$wt_path" ]]; then
-                print_worktree "$wt_path" "$wt_branch" "$wt_head"
-                wt_path="" wt_branch="" wt_head=""
-            fi
-            ;;
-    esac
-done < <(git -C "$REPO_PATH" worktree list --porcelain)
-
-# Handle last entry if no trailing blank line
-if [[ -n "$wt_path" ]]; then
+while IFS=$'\037' read -r wt_path wt_branch wt_head _; do
     print_worktree "$wt_path" "$wt_branch" "$wt_head"
-fi
+done < <(grove_worktree_fields "$REPO_PATH")

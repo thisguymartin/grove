@@ -3,6 +3,10 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/worktrees.sh
+source "$SCRIPT_DIR/lib/worktrees.sh"
+
 REPO_PATH="${1:-$(pwd)}"
 REPO_PATH=$(git -C "$REPO_PATH" rev-parse --show-toplevel 2>/dev/null) || {
     echo "Error: not a git repository: $REPO_PATH"
@@ -43,9 +47,6 @@ echo ""
 echo -e "${BOLD}Dirty Worktrees${RESET}"
 
 dirty_found=false
-wt_path=""
-wt_branch=""
-wt_head=""
 
 print_worktree_wip() {
     local path="$1"
@@ -54,7 +55,7 @@ print_worktree_wip() {
 
     local display_name
     if [[ -n "$branch" ]]; then
-        display_name="${branch#refs/heads/}"
+        display_name="$branch"
     else
         display_name="${head:0:7} (detached)"
     fi
@@ -86,24 +87,9 @@ print_worktree_wip() {
     fi
 }
 
-while IFS= read -r line; do
-    case "$line" in
-        worktree\ *) wt_path="${line#worktree }" ;;
-        branch\ *)   wt_branch="${line#branch }" ;;
-        HEAD\ *)     wt_head="${line#HEAD }" ;;
-        detached)     wt_branch="" ;;
-        "")
-            if [[ -n "$wt_path" ]]; then
-                print_worktree_wip "$wt_path" "$wt_branch" "$wt_head"
-                wt_path=""; wt_branch=""; wt_head=""
-            fi
-            ;;
-    esac
-done < <(git -C "$REPO_PATH" worktree list --porcelain)
-
-if [[ -n "$wt_path" ]]; then
+while IFS=$'\037' read -r wt_path wt_branch wt_head _; do
     print_worktree_wip "$wt_path" "$wt_branch" "$wt_head"
-fi
+done < <(grove_worktree_fields "$REPO_PATH")
 
 if ! $dirty_found; then
     echo -e "  ${GREEN}✓ All worktrees clean${RESET}"

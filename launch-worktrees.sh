@@ -38,6 +38,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/ai-agent.sh"
 # shellcheck source=lib/session.sh
 source "$SCRIPT_DIR/lib/session.sh"
+# shellcheck source=lib/worktrees.sh
+source "$SCRIPT_DIR/lib/worktrees.sh"
 
 # ---------------------------------------------------------------------------
 # Argument parsing
@@ -85,16 +87,15 @@ REPO_PATH="${REPO_PATH:-$(pwd)}"
 # ---------------------------------------------------------------------------
 # Sanity checks
 # ---------------------------------------------------------------------------
-if ! git -C "$REPO_PATH" rev-parse --show-toplevel &>/dev/null; then
+if ! grove_repo_common_dir "$REPO_PATH" >/dev/null; then
     echo "Error: '$REPO_PATH' is not inside a git repository"
     exit 1
 fi
 
-# Resolve to the primary worktree so every linked worktree shares one session.
-CURRENT_WORKTREE_ROOT=$(git -C "$REPO_PATH" rev-parse --show-toplevel)
-REPO_PATH=$(git -C "$CURRENT_WORKTREE_ROOT" worktree list --porcelain | awk '/^worktree / { print substr($0, 10); exit }')
-REPO_PATH="${REPO_PATH:-$CURRENT_WORKTREE_ROOT}"
-REPO_NAME="$(basename "$REPO_PATH")"
+# Resolve to the repository root so every worktree (and a bare layout's
+# repository directory) shares one session.
+REPO_PATH="$(grove_repo_root "$REPO_PATH")"
+REPO_NAME="$(grove_repo_name "$REPO_PATH")"
 SESSION_NAME="$(grove_session_name "$REPO_NAME")"
 
 if [[ -n "${ZELLIJ_SESSION_NAME:-}" ]]; then
@@ -122,76 +123,16 @@ HAS_LAZYGIT=false
 command -v lazygit &>/dev/null && HAS_LAZYGIT=true
 
 # ---------------------------------------------------------------------------
-# Parse git worktrees into parallel arrays
-# WT_PATHS[]   — absolute path to each worktree
-# WT_BRANCHES[] — full ref (refs/heads/foo) or empty string for detached
-# WT_HEADS[]   — commit SHA
+# Worktree inventory as parallel arrays (main worktree first)
 # ---------------------------------------------------------------------------
 WT_PATHS=()
 WT_BRANCHES=()
 WT_HEADS=()
-
-# git worktree list --porcelain outputs blocks like:
-#   worktree /path
-#   HEAD <sha>
-#   branch refs/heads/main   (or "detached")
-#   (blank line)
-parse_worktrees() {
-    local wt="" br="" hd=""
-    while IFS= read -r line; do
-        case "$line" in
-            worktree\ *)  wt="${line#worktree }" ;;
-            branch\ *)    br="${line#branch }" ;;
-            HEAD\ *)      hd="${line#HEAD }" ;;
-            detached)     br="" ;;
-            "")
-                if [[ -n "$wt" ]]; then
-                    WT_PATHS+=("$wt")
-                    WT_BRANCHES+=("$br")
-                    WT_HEADS+=("$hd")
-                    wt=""; br=""; hd=""
-                fi
-                ;;
-        esac
-    done < <(git -C "$REPO_PATH" worktree list --porcelain)
-
-    # Handle last block if no trailing blank line
-    if [[ -n "$wt" ]]; then
-        WT_PATHS+=("$wt")
-        WT_BRANCHES+=("$br")
-        WT_HEADS+=("$hd")
-    fi
-}
-
-parse_worktrees
-
-# Ensure the main worktree (original clone) is always included
-main_found=false
-for p in "${WT_PATHS[@]}"; do
-    if [[ "$p" == "$REPO_PATH" ]]; then
-        main_found=true
-        break
-    fi
-done
-
-if ! $main_found; then
-    # Detect default branch name (main or master)
-    main_branch=$(git -C "$REPO_PATH" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||')
-    if [[ -z "$main_branch" ]]; then
-        # Fallback: check if main or master branch exists
-        if git -C "$REPO_PATH" show-ref --verify --quiet refs/heads/main 2>/dev/null; then
-            main_branch="main"
-        elif git -C "$REPO_PATH" show-ref --verify --quiet refs/heads/master 2>/dev/null; then
-            main_branch="master"
-        else
-            main_branch=$(git -C "$REPO_PATH" symbolic-ref HEAD 2>/dev/null | sed 's|refs/heads/||')
-        fi
-    fi
-    main_head=$(git -C "$REPO_PATH" rev-parse HEAD 2>/dev/null || echo "")
-    WT_PATHS=("$REPO_PATH" "${WT_PATHS[@]}")
-    WT_BRANCHES=("refs/heads/$main_branch" "${WT_BRANCHES[@]}")
-    WT_HEADS=("$main_head" "${WT_HEADS[@]}")
-fi
+while IFS=$'\037' read -r wt_path wt_branch wt_head _; do
+    WT_PATHS+=("$wt_path")
+    WT_BRANCHES+=("$wt_branch")
+    WT_HEADS+=("$wt_head")
+done < <(grove_worktree_fields "$REPO_PATH")
 
 if [[ ${#WT_PATHS[@]} -eq 0 ]]; then
     echo "Error: no worktrees found in $REPO_PATH"
@@ -206,7 +147,7 @@ fi
 tab_name() {
     local branch="$1" head="$2"
     if [[ -n "$branch" ]]; then
-        echo "${branch#refs/heads/}"
+        echo "$branch"
     else
         echo "${head:0:7}"
     fi
